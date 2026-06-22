@@ -1,0 +1,23 @@
+duckdb>=0.10.0
+pandas>=2.0.0
+numpy>=1.26.0
+pyarrow>=14.0.0
+polars>=0.20.0
+pyyaml>=6.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.18.0
+scipy>=1.12.0
+scikit-learn>=1.4.0
+loguru>=0.7.0
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+pytest>=8.0.0
+jupyterlab>=4.0.0
+MetaTrader5>=5.0.45
+dukascopy-python>=4.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+anthropic>=0.39.0
+mplfinance>=0.12.10b0
+# playwright>=1.44.0   # optional: only needed for vision capture_mode=tradingview (run `playwright install chromium`)

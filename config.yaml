@@ -1,0 +1,169 @@
+project:
+  name: ORB_Research
+  version: "1.0"
+
+data:
+  source: dukascopy        # default fetch source: mt5 | dukascopy
+  raw_dir: "data/Level_0_Raw"
+  features_dir: "data/Level_1_Features"
+  datamart_dir: "data/Level_2_Datamart"
+  timeframe: "1m"
+
+symbols:
+  XAUUSD:
+    type: commodity
+    pip_size: 0.01
+    mt5_symbol: "XAUUSD"
+    dukascopy_instrument: "XAU/USD"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  NAS100:
+    type: index
+    pip_size: 0.25
+    mt5_symbol: "US100"
+    dukascopy_instrument: "E_NQ-100"
+    sessions:
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  GBPUSD:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "GBPUSD"
+    dukascopy_instrument: "GBP/USD"
+    sessions:
+      frankfurt: { open: "07:00", close: "08:00", tz: "UTC" }
+      london:    { open: "08:00", close: "09:00", tz: "UTC" }
+  EURUSD:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "EURUSD"
+    dukascopy_instrument: "EUR/USD"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  USDJPY:
+    type: forex
+    pip_size: 0.01
+    mt5_symbol: "USDJPY"
+    dukascopy_instrument: "USD/JPY"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  USDCHF:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "USDCHF"
+    dukascopy_instrument: "USD/CHF"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  AUDUSD:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "AUDUSD"
+    dukascopy_instrument: "AUD/USD"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  USDCAD:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "USDCAD"
+    dukascopy_instrument: "USD/CAD"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+  NZDUSD:
+    type: forex
+    pip_size: 0.0001
+    mt5_symbol: "NZDUSD"
+    dukascopy_instrument: "NZD/USD"
+    sessions:
+      london:   { open: "08:00", close: "09:00", tz: "UTC" }
+      new_york: { open: "13:30", close: "14:30", tz: "UTC" }
+
+orb:
+  range_minutes: 30        # Opening range duration
+  tp_multiplier: 1.0       # TP = range_size * multiplier
+  sl_multiplier: 1.0       # SL = range_size * multiplier
+  max_trades_per_session: 1
+  entry_buffer_pips: 0     # Buffer above/below range high/low
+
+walk_forward:
+  in_sample_months: 6
+  out_sample_months: 2
+  step_months: 2
+  min_trades: 30           # Minimum trades per window to be valid
+
+live:
+  host: "127.0.0.1"
+  port: 8000
+  data_source: mt5           # source of live bars for signal evaluation
+  recent_bars: 600           # M1 bars pulled per evaluation (covers the NY ORB window)
+  poll_seconds: 1            # EA poll cadence (used to judge EA "connected" in heartbeat)
+  heartbeat_seconds: 15      # server logs a heartbeat line at this cadence
+  # Each entry is one independent strategy "slot". Multiple slots (even on the
+  # same symbol) run concurrently and hold separate positions, tagged by `magic`.
+  # `type` picks the engine (dummy | orb | <future model>); the EA never changes.
+  # Give every slot a UNIQUE magic so positions never collide.
+  strategies:
+    - name: orb30_nas        # NAS100 rank-1 edge (research 2026-06-19, PF 1.28 OOS, WR 56%)
+      type: orb
+      symbol: NAS100
+      session: new_york      # opening = US cash open 13:30 UTC
+      lot: 0.01              # start safe on $1000; scale to 0.02-0.03 once confirmed
+      magic: 920617          # same magic -> existing US100 EA keeps managing it
+      params:
+        range_minutes: 30    # NY 30-min opening range
+        tp_mult: 1.0         # TP = 1 x range   (RR 1:1)
+        sl_mult: 1.0         # SL = 1 x range
+        use_sl: true         # real stop (RR 1:1 needs it)
+        range_filter: true   # only trade if range is 0.5-1.5x its 20-day median (the edge booster)
+        session_end_utc: "20:00"  # time-exit if neither SL/TP hit
+
+    - name: orb30_xau        # gold ORB (researched/backtested 2026-06-18, see _DOC/xau_orb_research.csv)
+      type: orb
+      symbol: XAUUSD
+      session: new_york      # XAU most robust on US session (London overfit IS, failed OOS)
+      lot: 0.01              # broker min for XAUUSD
+      magic: 920618          # UNIQUE (US100 uses 920617)
+      params:
+        range_minutes: 30    # NY 30-min opening range
+        tp_mult: 3.0         # TP = entry +/- 3 x range  (RR 1:3)
+        sl_mult: 1.0         # SL = entry -/+ 1 x range
+        use_sl: true         # XAU uses a stop (raised PF ~1.09 -> ~1.20 in backtest)
+        session_end_utc: "20:00"  # time-exit at US cash close if neither SL/TP hit
+
+    - name: vision_xau       # AI-vision gold (SMC via Claude) — runs ALONGSIDE orb30_xau
+      type: vision
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920619          # UNIQUE (920617=US100, 920618=orb_xau)
+      params:
+        interval_minutes: 15      # Claude API called at most once / 15 min (EA still polls 1s)
+        capture_mode: mt5         # mt5 (recommended) | tradingview
+        chart_timeframe: M5       # timeframe rendered to the chart image (mt5 mode)
+        chart_bars: 200           # bars rendered into the image
+        chart_url: ""             # only used when capture_mode=tradingview
+        model: "claude-opus-4-8"
+        min_confidence: 60        # < this -> FLAT
+        min_rr: 1.5               # R:R below this -> FLAT
+        price_offset: 0.0         # TV->FBS price correction (0 for capture_mode=mt5)
+        prompt_file: "pipeline/vision/prompt.md"
+        archive_all_frames: false # true = archive every screenshot; false = only on action change
+
+# AI-vision audit trail (used by pipeline/vision/journal.py)
+vision:
+  journal_path: "vision_journal.jsonl"
+  archive_dir: "_DOC/vision"
+
+audit:
+  interval_minutes: 15       # continuous worker re-check cadence
+  enable_repair: true        # auto-repair gaps/anomalies (false = report only)
+  refetch_before_fill: false # re-fetch medium gaps from source first (slow; useful for flaky sources)
+  max_refetch_days: 60       # cap on days re-fetched per symbol per cycle
+  max_fill_gap_minutes: 5    # intraday gaps <= this may be forward-filled (synthetic)
+  spike_return_threshold: 0.10   # |1m return| above this is flagged as a spike
+  flatline_repair: false     # flatline bars are reported, not repaired
+  report_dir: "_DOC/audit"
+  gaps_dir: "data/Level_2_Datamart/audit"
