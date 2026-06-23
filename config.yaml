@@ -100,6 +100,11 @@ live:
   port: 8000
   data_source: mt5           # source of live bars for signal evaluation
   recent_bars: 600           # M1 bars pulled per evaluation (covers the NY ORB window)
+  # MT5 returns bar times in BROKER SERVER time, not UTC. We shift them to true
+  # UTC so the session windows (13:30 UTC NY etc.) line up with the research.
+  # FBS = UTC+3 in summer (DST), UTC+2 in winter. null = auto-detect from a fresh
+  # tick; set an integer to force it. Server warns if the live offset differs.
+  mt5_server_utc_offset_hours: null
   poll_seconds: 1            # EA poll cadence (used to judge EA "connected" in heartbeat)
   heartbeat_seconds: 15      # server logs a heartbeat line at this cadence
   # Each entry is one independent strategy "slot". Multiple slots (even on the

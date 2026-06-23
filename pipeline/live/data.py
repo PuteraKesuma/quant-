@@ -17,6 +17,7 @@ class DataProvider:
     def __init__(self, cfg: dict | None = None):
         self.cfg = cfg or load_config()
         self._initialized = False
+        self._offset_hours: int | None = None   # cached broker server->UTC offset
 
     def _ensure_mt5(self):
         import MetaTrader5 as mt5
@@ -46,4 +47,47 @@ class DataProvider:
         df["ts"] = pd.to_datetime(df["time"], unit="s", utc=True)
         df = df.rename(columns={"tick_volume": "volume"})
         df = df.set_index("ts")[["open", "high", "low", "close", "volume"]].sort_index()
+
+        # MT5 bar times are in BROKER SERVER time, not UTC. Shift to true UTC so the
+        # UTC session windows (e.g. 13:30 NY) line up with the research. Without this
+        # the live ORB evaluates a window offset by the broker's UTC offset.
+        offset = self._server_offset_hours(mt5, mt5_symbol)
+        if offset:
+            df.index = df.index - pd.Timedelta(hours=offset)
         return df
+
+    def _server_offset_hours(self, mt5, mt5_symbol) -> int:
+        """Broker server time minus UTC, in whole hours (e.g. FBS = +3 summer).
+
+        Uses the configured value if set; otherwise auto-detects from a fresh tick
+        (server tick time vs real UTC, rounded to the nearest hour). Auto-detection
+        is only trusted when the tick is fresh (a whole-hour offset within a sane
+        range), so a stale weekend tick can't poison it. Warns if a configured
+        offset disagrees with a freshly detected one (likely a DST change)."""
+        configured = self.cfg.get("live", {}).get("mt5_server_utc_offset_hours")
+
+        detected = None
+        tick = mt5.symbol_info_tick(mt5_symbol)
+        if tick and tick.time:
+            server_now = pd.Timestamp(tick.time, unit="s", tz="UTC")
+            diff = (server_now - pd.Timestamp.utcnow()).total_seconds() / 3600.0
+            nearest = round(diff)
+            if abs(diff - nearest) <= 0.5 and -12 <= nearest <= 14:   # fresh, sane
+                detected = nearest
+
+        if configured is not None:
+            if detected is not None and detected != configured:
+                logger.warning(
+                    f"Configured mt5_server_utc_offset_hours={configured} but live "
+                    f"offset looks like {detected} (DST change?). Update config.yaml."
+                )
+            offset = int(configured)
+        elif detected is not None:
+            offset = detected
+        else:
+            offset = self._offset_hours or 0   # keep last good; 0 until first detect
+
+        if offset != self._offset_hours:
+            logger.info(f"MT5 server->UTC offset = {offset:+d}h")
+            self._offset_hours = offset
+        return offset
