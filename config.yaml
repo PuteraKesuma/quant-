@@ -16,6 +16,7 @@ symbols:
     mt5_symbol: "XAUUSD"
     dukascopy_instrument: "XAU/USD"
     sessions:
+      asia:     { open: "00:00", close: "01:00", tz: "UTC" }   # Tokyo open; ORB edge validated OOS pf 1.17
       london:   { open: "08:00", close: "09:00", tz: "UTC" }
       new_york: { open: "13:30", close: "14:30", tz: "UTC" }
   NAS100:
@@ -139,6 +140,20 @@ live:
         use_sl: true         # XAU uses a stop (raised PF ~1.09 -> ~1.20 in backtest)
         session_end_utc: "20:00"  # time-exit at US cash close if neither SL/TP hit
 
+    - name: orb30_xau_asia   # gold ORB, ASIA/Tokyo session — edge validated 2026-06-24 (sweep below)
+      type: orb
+      symbol: XAUUSD
+      session: asia          # Tokyo open 00:00 UTC = 08:00 WITA
+      lot: 0.01
+      magic: 920620          # UNIQUE
+      params:
+        range_minutes: 30    # 30-min opening range
+        tp_mult: 1.0         # RR 1:1 — most ROBUST (IS pf 1.11 AND OOS pf 1.17, lowest DD -16R)
+        sl_mult: 1.0         # SL = 1 x range
+        use_sl: true
+        # no range_filter: the validated Asia edge is raw ORB (filter not tested here)
+        session_end_utc: "08:00"  # time-exit before London open if neither SL/TP hit
+
     - name: vision_xau       # AI-vision gold (SMC via Claude) — runs ALONGSIDE orb30_xau
       type: vision
       symbol: XAUUSD
@@ -160,6 +175,24 @@ live:
         price_offset: 0.0         # TV->FBS price correction (0 for capture_mode=mt5)
         prompt_file: "pipeline/vision/prompt.md"
         archive_all_frames: false # true = archive every screenshot; false = only on action change
+
+    - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — runs ALONGSIDE the others
+      type: vision
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920621          # UNIQUE (920617=US100, 920618=orb_xau, 920619=vision_xau, 920620=orb_xau_asia)
+      params:
+        interval_minutes: 30      # Claude called at most once / 30 min (3 images/call ~ 3x tokens of single-TF)
+        active_windows_utc: ["00:00-22:00"]   # Asia+London+NY = 08:00-06:00 WITA
+        capture_mode: mt5
+        timeframes: ["H1", "M15", "M5"]       # highest->lowest: bias+zones (H1/M15), entry+SL/TP (M5)
+        chart_bars: 200           # bars rendered per timeframe image
+        model: "claude-opus-4-8"
+        min_confidence: 65        # stricter than single-TF (multi-TF should be cleaner) -> FLAT below
+        min_rr: 1.5               # R:R below this -> FLAT
+        price_offset: 0.0         # mt5 render = on-broker prices, no correction
+        prompt_file: "pipeline/vision/prompt_smc_mtf.md"
+        archive_all_frames: false
 
 # AI-vision audit trail (used by pipeline/vision/journal.py)
 vision:

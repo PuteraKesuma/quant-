@@ -28,6 +28,12 @@ class ChartCapturer:
         self.chart_bars = int(p.get("chart_bars", 200))
         self.chart_timeframe = str(p.get("chart_timeframe", "M5"))
         self.chart_url = p.get("chart_url", "") or ""
+        # Optional multi-timeframe list (highest->lowest), e.g. ["H1","M15","M5"].
+        # When set, capture_multi() renders one image per timeframe (mt5 mode only).
+        tfs = p.get("timeframes")
+        if isinstance(tfs, str):
+            tfs = [t.strip() for t in tfs.split(",") if t.strip()]
+        self.timeframes = list(tfs) if tfs else []
         self._mt5_init = False
         self._pw = None
         self._browser = None
@@ -41,8 +47,19 @@ class ChartCapturer:
             return self._capture_tv(symbol)
         raise ValueError(f"unknown capture_mode: {self.mode!r}")
 
+    def capture_multi(self, symbol: str) -> list[tuple[str, bytes]]:
+        """Return [(timeframe_label, PNG bytes), ...] for each configured timeframe,
+        highest->lowest. mt5 mode only; falls back to a single image otherwise.
+        Raises on failure (the VisionStrategy wraps and degrades to cached/FLAT)."""
+        if not self.timeframes:
+            return [(self.chart_timeframe, self.capture(symbol))]
+        if self.mode != "mt5":          # multi-TF rendering needs the mt5 renderer
+            logger.warning(f"timeframes set but capture_mode={self.mode!r}; using single image")
+            return [(self.chart_timeframe, self.capture(symbol))]
+        return [(tf, self._capture_mt5(symbol, timeframe=tf)) for tf in self.timeframes]
+
     # ----------------------------------------------------------------- mt5 mode
-    def _capture_mt5(self, symbol: str) -> bytes:
+    def _capture_mt5(self, symbol: str, timeframe: str | None = None) -> bytes:
         import MetaTrader5 as mt5
         import pandas as pd
 
@@ -51,6 +68,7 @@ class ChartCapturer:
                 raise RuntimeError(f"MT5 initialize() failed: {mt5.last_error()}")
             self._mt5_init = True
 
+        tf_label = timeframe or self.chart_timeframe
         mt5_symbol = self.cfg["symbols"][symbol]["mt5_symbol"]
         info = mt5.symbol_info(mt5_symbol)
         if info is None:
@@ -58,16 +76,16 @@ class ChartCapturer:
         if not info.visible:
             mt5.symbol_select(mt5_symbol, True)
 
-        tf = self._tf_const(mt5, self.chart_timeframe)
+        tf = self._tf_const(mt5, tf_label)
         rates = mt5.copy_rates_from_pos(mt5_symbol, tf, 0, self.chart_bars)
         if rates is None or len(rates) == 0:
-            raise RuntimeError(f"No {self.chart_timeframe} bars for {mt5_symbol}: {mt5.last_error()}")
+            raise RuntimeError(f"No {tf_label} bars for {mt5_symbol}: {mt5.last_error()}")
 
         df = pd.DataFrame(rates)
         df["ts"] = pd.to_datetime(df["time"], unit="s", utc=True)
         df = df.rename(columns={"tick_volume": "volume"})
         df = df.set_index("ts")[["open", "high", "low", "close", "volume"]].sort_index()
-        return self._render(df, symbol)
+        return self._render(df, symbol, tf_label)
 
     @staticmethod
     def _tf_const(mt5, tf: str):
@@ -80,7 +98,7 @@ class ChartCapturer:
             raise ValueError(f"unsupported chart_timeframe: {tf!r}")
         return table[tf]
 
-    def _render(self, df, symbol: str) -> bytes:
+    def _render(self, df, symbol: str, tf_label: str | None = None) -> bytes:
         """Candlestick PNG (~1280x720) with swing S/R lines, in memory."""
         import mplfinance as mpf
 
@@ -88,7 +106,7 @@ class ChartCapturer:
         buf = io.BytesIO()
         kwargs = dict(
             type="candle", volume=True, style="charles",
-            title=f"{symbol} {self.chart_timeframe}",
+            title=f"{symbol} {tf_label or self.chart_timeframe}",
             figsize=(12.8, 7.2),
             savefig=dict(fname=buf, dpi=100, format="png"),
         )

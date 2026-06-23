@@ -40,40 +40,75 @@ class VisionAnalyzer:
                 bars_in_state: int) -> dict:
         """Return the model's decision dict. Never raises — safe FLAT on error."""
         try:
-            client = self._get_client()
             b64 = base64.standard_b64encode(png).decode("utf-8")
-            user_text = (
-                "Analyze this chart. Runtime context:\n"
-                f"- ServerSymbol: {symbol}\n"
-                f"- Current open slot action (previous decision): {prev_action}\n"
-                f"- Slot has been in this state for: {bars_in_state} candles\n\n"
-                "Decide the desired end state now."
-            )
-            resp = client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=self._system_prompt(),
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {
-                            "type": "base64", "media_type": "image/png", "data": b64}},
-                        {"type": "text", "text": user_text},
-                    ],
-                }],
-            )
-            raw = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-            decision = self._apply_offset(self._parse(raw))
-            logger.info(
-                f"[vision:{symbol}] action={decision['action']} "
-                f"conf={decision['confidence']} sl={decision['sl']} tp={decision['tp']}"
-            )
-            return decision
+            content = [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/png", "data": b64}},
+                {"type": "text", "text": self._user_text(symbol, prev_action, bars_in_state)},
+            ]
+            return self._call(content, symbol)
         except Exception as e:                  # fail-safe: never propagate
             logger.exception(f"[vision:{symbol}] analyze failed")
             return self._safe_flat(f"analyze error: {e}")
 
+    def analyze_multi(self, images: list[tuple[str, bytes]], symbol: str,
+                      prev_action: str, bars_in_state: int) -> dict:
+        """Like analyze() but sends several timeframe images (highest->lowest) in
+        one call so the model can use HTF bias + LTF entry. Never raises."""
+        try:
+            tfs = [label for label, _ in images]
+            content: list[dict] = []
+            for label, png in images:
+                b64 = base64.standard_b64encode(png).decode("utf-8")
+                content.append({"type": "text", "text": f"Chart timeframe {label}:"})
+                content.append({"type": "image", "source": {
+                    "type": "base64", "media_type": "image/png", "data": b64}})
+            content.append({"type": "text",
+                            "text": self._user_text(symbol, prev_action, bars_in_state, tfs)})
+            return self._call(content, symbol)
+        except Exception as e:                  # fail-safe: never propagate
+            logger.exception(f"[vision:{symbol}] analyze_multi failed")
+            return self._safe_flat(f"analyze error: {e}")
+
     # ----------------------------------------------------------------- helpers
+    def _call(self, content: list[dict], symbol: str) -> dict:
+        """Send the prepared content blocks to Claude, parse + log. May raise."""
+        client = self._get_client()
+        resp = client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=self._system_prompt(),
+            messages=[{"role": "user", "content": content}],
+        )
+        raw = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+        decision = self._apply_offset(self._parse(raw))
+        logger.info(
+            f"[vision:{symbol}] action={decision['action']} "
+            f"conf={decision['confidence']} sl={decision['sl']} tp={decision['tp']}"
+        )
+        return decision
+
+    def _user_text(self, symbol: str, prev_action: str, bars_in_state: int,
+                   tfs: list[str] | None = None) -> str:
+        """Runtime-context user message. With `tfs` it frames the multi-TF read."""
+        if tfs:
+            head = (
+                f"You are given {len(tfs)} chart images of the SAME symbol at different "
+                f"timeframes ({', '.join(tfs)}), ordered highest to lowest. Use the higher "
+                "timeframe(s) for directional bias and the major OB/FVG/IFVG zones, and the "
+                "lowest timeframe for entry timing and precise SL/TP placement. Trade only "
+                "when the timeframes ALIGN.\n\n"
+            )
+        else:
+            head = "Analyze this chart. "
+        return (
+            head + "Runtime context:\n"
+            f"- ServerSymbol: {symbol}\n"
+            f"- Current open slot action (previous decision): {prev_action}\n"
+            f"- Slot has been in this state for: {bars_in_state} candles\n\n"
+            "Decide the desired end state now."
+        )
+
     def _get_client(self):
         if self._client is None:
             import anthropic

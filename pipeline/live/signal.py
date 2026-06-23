@@ -213,6 +213,10 @@ class VisionStrategy(BaseStrategy):
         self.min_rr = float(p.get("min_rr", 1.5))
         self.archive_all = bool(p.get("archive_all_frames", False))
         self.active_windows = self._parse_windows(p.get("active_windows_utc", []))
+        tfs = p.get("timeframes")
+        if isinstance(tfs, str):
+            tfs = [t.strip() for t in tfs.split(",") if t.strip()]
+        self.timeframes = list(tfs) if tfs else []   # multi-TF SMC when set
         self.capturer = ChartCapturer(spec, cfg)
         self.analyzer = VisionAnalyzer(spec, cfg)
         self.state = SlotState(self.symbol, self.name)
@@ -237,8 +241,13 @@ class VisionStrategy(BaseStrategy):
             prev = self.state.prev_action
             bars = self.state.bars_in_state
             try:
-                png = self.capturer.capture(self.symbol)
-                decision = self.analyzer.analyze(png, self.symbol, prev, bars)
+                if self.timeframes:
+                    images = self.capturer.capture_multi(self.symbol)
+                    decision = self.analyzer.analyze_multi(images, self.symbol, prev, bars)
+                    png = images[-1][1] if images else b""   # lowest TF frame for the journal
+                else:
+                    png = self.capturer.capture(self.symbol)
+                    decision = self.analyzer.analyze(png, self.symbol, prev, bars)
             except Exception:
                 logger.exception(f"[{self.name}] vision capture/analyze error")
                 return self.state.cached() or self._flat("ERROR", now)
