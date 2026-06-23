@@ -1,5 +1,5 @@
 @echo off
 title ORB Heartbeat Monitor
-cd /d "C:\Users\msigf\OneDrive\Documents\Quant"
+cd /d "%~dp0"
 python -m pipeline.live.heartbeat
 pause >nul

@@ -140,7 +140,11 @@ live:
       lot: 0.01
       magic: 920619          # UNIQUE (920617=US100, 920618=orb_xau)
       params:
-        interval_minutes: 15      # Claude API called at most once / 15 min (EA still polls 1s)
+        interval_minutes: 30      # Claude API called at most once / 30 min (EA still polls 1s)
+        # Only call Claude during these UTC windows (saves tokens). Empty = 24h.
+        # Covers Asia+London+NY for gold: 00:00-22:00 UTC = 08:00-06:00 WITA.
+        # Trim to "08:00-22:00" (London+NY only) to cut cost ~35% if you skip Asia.
+        active_windows_utc: ["00:00-22:00"]
         capture_mode: mt5         # mt5 (recommended) | tradingview
         chart_timeframe: M5       # timeframe rendered to the chart image (mt5 mode)
         chart_bars: 200           # bars rendered into the image

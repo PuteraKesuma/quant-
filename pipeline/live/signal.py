@@ -212,14 +212,22 @@ class VisionStrategy(BaseStrategy):
         self.min_conf = int(p.get("min_confidence", 60))
         self.min_rr = float(p.get("min_rr", 1.5))
         self.archive_all = bool(p.get("archive_all_frames", False))
+        self.active_windows = self._parse_windows(p.get("active_windows_utc", []))
         self.capturer = ChartCapturer(spec, cfg)
         self.analyzer = VisionAnalyzer(spec, cfg)
         self.state = SlotState(self.symbol, self.name)
         self.journal = VisionJournal(cfg)
 
     def evaluate(self) -> SignalResponse:
-        now = pd.Timestamp.utcnow().isoformat()
+        now_ts = pd.Timestamp.utcnow()
+        now = now_ts.isoformat()
         try:
+            # 0. active-hours gate — outside the configured trading windows we
+            #    never call Claude (zero tokens). Serve the cached decision so an
+            #    already-open position is left for the broker SL/TP to manage.
+            if not self._within_active_hours(now_ts):
+                return self.state.cached() or self._flat("OFFHOURS", now)
+
             # 1. cadence gate — between intervals, serve the cached decision so
             #    signal_id is stable and the EA does nothing.
             if not self.state.due(self.interval):
@@ -255,6 +263,38 @@ class VisionStrategy(BaseStrategy):
         except Exception:                       # absolute backstop — never propagate
             logger.exception(f"[{self.name}] vision evaluate fatal")
             return self.state.cached() or self._flat("ERROR", now)
+
+    def _parse_windows(self, spec) -> list[tuple[int, int]]:
+        """Parse 'HH:MM-HH:MM' UTC windows into (start_min, end_min) minute pairs.
+
+        Accepts a list or a comma-separated string. Empty -> [] = always active.
+        A window may wrap midnight UTC (start > end), e.g. '22:00-06:00'.
+        """
+        if isinstance(spec, str):
+            spec = [w.strip() for w in spec.split(",") if w.strip()]
+        out: list[tuple[int, int]] = []
+        for w in spec or []:
+            try:
+                a, b = str(w).split("-")
+                sh, sm = (int(x) for x in a.split(":"))
+                eh, em = (int(x) for x in b.split(":"))
+                out.append((sh * 60 + sm, eh * 60 + em))
+            except Exception:
+                logger.warning(f"[{self.name}] bad active_windows_utc entry {w!r}, ignored")
+        return out
+
+    def _within_active_hours(self, now_ts) -> bool:
+        """True if `now_ts` (UTC) falls in any configured window (or none set)."""
+        if not self.active_windows:
+            return True
+        m = now_ts.hour * 60 + now_ts.minute
+        for start, end in self.active_windows:
+            if start <= end:
+                if start <= m < end:
+                    return True
+            elif m >= start or m < end:        # window wraps midnight
+                return True
+        return False
 
     def _apply_guards(self, d: dict) -> str:
         """Confidence < min_confidence or RR < min_rr -> FLAT."""
