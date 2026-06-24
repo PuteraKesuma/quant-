@@ -211,6 +211,10 @@ class VisionStrategy(BaseStrategy):
         self.interval = float(p.get("interval_minutes", 15))
         self.min_conf = int(p.get("min_confidence", 60))
         self.min_rr = float(p.get("min_rr", 1.5))
+        # Reversing an OPEN position is a fresh entry against an existing trade, so
+        # it must clear a (>=) higher confidence bar than a plain open — hysteresis
+        # against flip-flopping on noise. Defaults to the entry bar (no extra gate).
+        self.min_reverse_conf = int(p.get("min_reverse_confidence", self.min_conf))
         self.archive_all = bool(p.get("archive_all_frames", False))
         self.active_windows = self._parse_windows(p.get("active_windows_utc", []))
         tfs = p.get("timeframes")
@@ -252,17 +256,36 @@ class VisionStrategy(BaseStrategy):
                 logger.exception(f"[{self.name}] vision capture/analyze error")
                 return self.state.cached() or self._flat("ERROR", now)
 
-            # 3. guards may override the model's action to FLAT
-            action = self._apply_guards(decision)
+            # 3. ENTRY/EXIT split (best practice: guards gate ENTRIES only). An
+            #    already-open position is managed by the SL/TP set at entry and is
+            #    closed ONLY on an explicit Claude FLAT or a guard-clearing,
+            #    high-confidence reversal — never force-closed by re-checking RR
+            #    against the moving price, and its SL/TP are never widened mid-trade.
+            prev = self.state.prev_action               # the position the slot holds now
+            raw = decision.get("action", "FLAT")
+            if prev == "FLAT":
+                action = self._apply_guards(decision)            # open only if it clears the bar
+            elif raw == prev:
+                action = prev                                    # same direction -> HOLD
+            elif raw == "FLAT":
+                action = "FLAT"                                  # Claude explicitly exits
+            else:                                                # opposite -> reverse only if convincing
+                conf = int(decision.get("confidence", 0) or 0)
+                reverse_ok = self._apply_guards(decision) == raw and conf >= self.min_reverse_conf
+                action = raw if reverse_ok else prev             # else keep the open trade
+            is_hold = action != "FLAT" and action == prev        # keeping an existing position
 
             # 4. commit (signal_id lifecycle) + journal, then cache & return
             def builder(sig_id: str) -> SignalResponse:
                 if action == "FLAT":
                     return flat(self.name, self.symbol, self.magic, sig_id, now)
+                if is_hold and self.state.cached() is not None:
+                    sl, tp = self.state.cached().sl, self.state.cached().tp  # keep entry SL/TP — never widen
+                else:
+                    sl, tp = round(float(decision["sl"]), 5), round(float(decision["tp"]), 5)
                 return SignalResponse(
                     strategy=self.name, symbol=self.symbol, action=action,
-                    sl=round(float(decision["sl"]), 5), tp=round(float(decision["tp"]), 5),
-                    lot=self.lot, magic=self.magic, signal_id=sig_id, ts=now,
+                    sl=sl, tp=tp, lot=self.lot, magic=self.magic, signal_id=sig_id, ts=now,
                 )
 
             resp = self.state.commit(action, builder)
