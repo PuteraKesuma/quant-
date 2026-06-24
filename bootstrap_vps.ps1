@@ -47,16 +47,25 @@ if (Test-Path $extractTmp) { Remove-Item $extractTmp -Recurse -Force }
 Expand-Archive -Path $zip -DestinationPath $extractTmp -Force
 $srcDir = Get-ChildItem $extractTmp -Directory | Select-Object -First 1   # quant--main
 
-# pindahkan ke C:\Quant (jaga .env lama kalau sudah ada)
+# Update ke C:\Quant. Pakai robocopy (timpa file di tempat) supaya TIDAK perlu
+# menghapus folder — aman walau ada Explorer/terminal terbuka di C:\Quant.
+$envFile   = Join-Path $InstallDir ".env"
 $envBackup = $null
-if (Test-Path (Join-Path $InstallDir ".env")) {
-    $envBackup = Get-Content (Join-Path $InstallDir ".env") -Raw
+if (Test-Path $envFile) {
+    $envBackup = Get-Content $envFile -Raw
     Warn ".env lama ditemukan — akan dipertahankan."
 }
-if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
-Move-Item $srcDir.FullName $InstallDir
-Remove-Item $zip,$extractTmp -Recurse -Force -ErrorAction SilentlyContinue
-Ok "Kode tersimpan di $InstallDir"
+# stop brain lama kalau masih jalan (biar file .py tidak terkunci)
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like '*run_server*' } |
+    ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch {} }
+
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+robocopy $srcDir.FullName $InstallDir /MIR /XF ".env" /R:1 /W:1 /NFL /NDL /NJH /NJS /NP /NC /NS | Out-Null
+if ($LASTEXITCODE -ge 8) { Warn "robocopy melaporkan masalah (exit $LASTEXITCODE) — sebagian file mungkin terkunci. Tutup MT5/Explorer di C:\Quant lalu ulangi." }
+if ($envBackup) { Set-Content -Path $envFile -Value $envBackup -Encoding utf8 }
+Remove-Item $zip, $extractTmp -Recurse -Force -ErrorAction SilentlyContinue
+Ok "Kode ter-update di $InstallDir (file ditimpa, folder tidak dihapus)"
 
 Set-Location $InstallDir
 
@@ -101,6 +110,7 @@ SISA 3 LANGKAH MANUAL (sekali saja):
 
 "@ -ForegroundColor White
 
-Start-Process notepad.exe $envPath
-Ok "Buka folder kode..."
-Start-Process explorer.exe $InstallDir
+# Open Notepad to fill the key only on a FRESH install (not on updates), and do
+# NOT auto-open Explorer (an Explorer window locks C:\Quant for the next update).
+if (-not $envBackup) { Start-Process notepad.exe $envPath }
+Ok "Folder kode: $InstallDir"
