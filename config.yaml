@@ -154,29 +154,7 @@ live:
         # no range_filter: the validated Asia edge is raw ORB (filter not tested here)
         session_end_utc: "08:00"  # time-exit before London open if neither SL/TP hit
 
-    - name: vision_xau       # AI-vision gold (SMC via Claude) — runs ALONGSIDE orb30_xau
-      type: vision
-      symbol: XAUUSD
-      lot: 0.01
-      magic: 920619          # UNIQUE (920617=US100, 920618=orb_xau)
-      params:
-        interval_minutes: 30      # Claude API called at most once / 30 min (EA still polls 1s)
-        # Only call Claude during these UTC windows (saves tokens). Empty = 24h.
-        # Covers Asia+London+NY for gold: 00:00-22:00 UTC = 08:00-06:00 WITA.
-        # Trim to "08:00-22:00" (London+NY only) to cut cost ~35% if you skip Asia.
-        active_windows_utc: ["00:00-22:00"]
-        capture_mode: mt5         # mt5 (recommended) | tradingview
-        chart_timeframe: M5       # timeframe rendered to the chart image (mt5 mode)
-        chart_bars: 200           # bars rendered into the image
-        chart_url: ""             # only used when capture_mode=tradingview
-        model: "claude-opus-4-8"
-        min_confidence: 60        # < this -> FLAT
-        min_rr: 1.5               # R:R below this -> FLAT
-        price_offset: 0.0         # TV->FBS price correction (0 for capture_mode=mt5)
-        prompt_file: "pipeline/vision/prompt.md"
-        archive_all_frames: false # true = archive every screenshot; false = only on action change
-
-    - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — runs ALONGSIDE the others
+    - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — the single vision base
       type: vision
       symbol: XAUUSD
       lot: 0.01
@@ -188,10 +166,18 @@ live:
         timeframes: ["H1", "M15", "M5"]       # highest->lowest: bias+zones (H1/M15), entry+SL/TP (M5)
         chart_bars: 200           # bars rendered per timeframe image
         model: "claude-opus-4-8"
-        min_confidence: 65        # stricter than single-TF (multi-TF should be cleaner) -> FLAT below
-        min_rr: 1.5               # R:R below this -> FLAT
+        min_confidence: 65        # entry only if Claude conf >= this
+        min_reverse_confidence: 75 # flipping an OPEN trade needs a higher bar (anti flip-flop)
+        min_rr: 1.5               # R:R below this -> FLAT (entry gate only; never force-closes open trades)
         price_offset: 0.0         # mt5 render = on-broker prices, no correction
         prompt_file: "pipeline/vision/prompt_smc_mtf.md"
+        # Lock-profit reversal (rule-based, no Claude, every poll): once in profit
+        # >= 0.5R, close the moment price breaks the swing of the last 3 completed M5
+        # bars against the trade. Banks profit fast; zero extra tokens.
+        lock_profit_reversal: true
+        lock_min_profit_r: 0.5
+        reversal_tf: M5
+        reversal_lookback: 3
         archive_all_frames: false
 
 # AI-vision audit trail (used by pipeline/vision/journal.py)

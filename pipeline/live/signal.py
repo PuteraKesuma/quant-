@@ -215,6 +215,15 @@ class VisionStrategy(BaseStrategy):
         # it must clear a (>=) higher confidence bar than a plain open — hysteresis
         # against flip-flopping on noise. Defaults to the entry bar (no extra gate).
         self.min_reverse_conf = int(p.get("min_reverse_confidence", self.min_conf))
+        # Rule-based lock-profit reversal (NO Claude, runs every poll): once an open
+        # position is in profit >= lock_min_profit_r, close it the moment price breaks
+        # the swing of the last `reversal_lookback` completed `reversal_tf` bars
+        # against the trade — banks profit fast without burning tokens. Entry stays
+        # Claude's job; this is a cheap exit guard only.
+        self.lock_profit = bool(p.get("lock_profit_reversal", False))
+        self.lock_min_profit_r = float(p.get("lock_min_profit_r", 0.5))
+        self.reversal_tf = str(p.get("reversal_tf", "M5"))
+        self.reversal_lookback = int(p.get("reversal_lookback", 3))
         self.archive_all = bool(p.get("archive_all_frames", False))
         self.active_windows = self._parse_windows(p.get("active_windows_utc", []))
         tfs = p.get("timeframes")
@@ -230,7 +239,15 @@ class VisionStrategy(BaseStrategy):
         now_ts = pd.Timestamp.utcnow()
         now = now_ts.isoformat()
         try:
-            # 0. active-hours gate — outside the configured trading windows we
+            # 0. lock-profit reversal — rule-based, NO Claude, runs every poll. Only
+            #    acts on an in-profit open position; closes it on a structure flip so
+            #    gains are banked before price retraces. Works off-hours/between
+            #    Claude cycles, costs zero tokens.
+            locked = self._lock_profit_check(now)
+            if locked is not None:
+                return locked
+
+            # 1. active-hours gate — outside the configured trading windows we
             #    never call Claude (zero tokens). Serve the cached decision so an
             #    already-open position is left for the broker SL/TP to manage.
             if not self._within_active_hours(now_ts):
@@ -364,6 +381,77 @@ class VisionStrategy(BaseStrategy):
         except Exception as e:
             logger.warning(f"[{self.name}] entry price unavailable: {e}")
         return None
+
+    # ---------------------------------------------------- lock-profit reversal
+    def _lock_profit_check(self, now: str) -> SignalResponse | None:
+        """If holding an in-profit position and price flips structure against it,
+        close to bank the profit. Rule-based (no Claude). Returns a FLAT response
+        to commit, or None to leave the position alone. Never raises."""
+        if not self.lock_profit or self.state.prev_action == "FLAT":
+            return None
+        try:
+            pos = self._open_position()
+            if pos is None:                      # not filled yet, or already closed — don't act
+                return None
+            if not self._reversal_hit(pos):
+                return None
+            logger.info(f"[{self.name}] lock-profit: structure flip vs "
+                        f"{self.state.prev_action} -> close to bank profit")
+            return self.state.commit(
+                "FLAT", lambda sid: flat(self.name, self.symbol, self.magic, sid, now))
+        except Exception:
+            logger.exception(f"[{self.name}] lock-profit check error")
+            return None
+
+    def _open_position(self):
+        """The live MT5 position for this slot's magic+symbol, or None."""
+        import MetaTrader5 as mt5
+        mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+        for p in (mt5.positions_get(symbol=mt5_symbol) or ()):
+            if p.magic == self.magic:
+                return p
+        return None
+
+    def _reversal_hit(self, pos) -> bool:
+        """True if the position is in profit >= lock_min_profit_r AND price has broken
+        the swing of the last `reversal_lookback` completed `reversal_tf` bars against it."""
+        import MetaTrader5 as mt5
+        direction = "BUY" if pos.type == mt5.POSITION_TYPE_BUY else "SELL"
+        entry, sl, current = float(pos.price_open), float(pos.sl or 0), float(pos.price_current)
+
+        profit = (current - entry) if direction == "BUY" else (entry - current)
+        if profit <= 0:
+            return False
+        if sl > 0:                               # require >= min R of profit when an SL exists
+            risk = abs(entry - sl)
+            if risk > 0 and (profit / risk) < self.lock_min_profit_r:
+                return False
+
+        bars = self._reversal_bars()
+        if bars is None or len(bars) < self.reversal_lookback:
+            return False
+        return self._is_reversal(direction, current, bars)
+
+    def _reversal_bars(self):
+        """Last `reversal_lookback` COMPLETED bars on `reversal_tf` (resampled from
+        live M1), excluding the still-forming bar. None if unavailable."""
+        rule = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min"}.get(
+            self.reversal_tf, "5min")
+        m1 = self.data.recent_bars(self.symbol, 600)
+        if m1 is None or m1.empty:
+            return None
+        agg = m1.resample(rule).agg({"high": "max", "low": "min"}).dropna()
+        if len(agg) < self.reversal_lookback + 1:
+            return None
+        return agg.iloc[-(self.reversal_lookback + 1):-1]      # drop the forming bar
+
+    @staticmethod
+    def _is_reversal(direction: str, current: float, bars) -> bool:
+        """Pure rule: a SELL is reversed when price breaks ABOVE the recent swing high;
+        a BUY when it breaks BELOW the recent swing low."""
+        if direction == "SELL":
+            return current > float(bars["high"].max())
+        return current < float(bars["low"].min())
 
 
 # register new model types here; config `type:` selects one

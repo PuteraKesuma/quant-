@@ -26,6 +26,8 @@ input double MaxLot          = 1.0;                     // safety clamp per orde
 input int    HttpTimeout     = 800;                     // WebRequest timeout (ms)
 input bool   ShowPanel       = true;                     // on-chart heartbeat panel
 input int    HeartbeatSeconds = 15;                      // Experts-log heartbeat cadence (0=off)
+input double BreakevenAtR     = 1.0;                     // move SL to entry once profit >= this x risk (0=off)
+input string BreakevenMagics  = "920621";               // CSV of magics BE applies to (empty=all). Keep ORB out!
 
 //--- state
 CTrade   trade;
@@ -89,8 +91,65 @@ void OnTimer()
    else
       g_connected = false;
 
+   if(can_trade) ManageBreakeven();     // generic risk-mgmt: SL->entry at +R (selected magics)
+
    UpdatePanel(can_trade);
    HeartbeatLog(can_trade);
+  }
+
+//+------------------------------------------------------------------+
+//| Breakeven: once a position is +BreakevenAtR in profit, move its  |
+//| SL to entry. Generic risk management (no strategy knowledge); it |
+//| only touches magics in BreakevenMagics so ORB stays as backtested.|
+//+------------------------------------------------------------------+
+bool BeAppliesTo(long magic)
+  {
+   if(StringLen(BreakevenMagics) == 0) return true;        // empty = all managed
+   string parts[];
+   int k = StringSplit(BreakevenMagics, ',', parts);
+   for(int i = 0; i < k; i++)
+     {
+      string p = parts[i];
+      StringTrimLeft(p);
+      StringTrimRight(p);
+      if(StringToInteger(p) == magic) return true;
+     }
+   return false;
+  }
+
+void ManageBreakeven()
+  {
+   if(BreakevenAtR <= 0.0) return;
+   int digits = (int)SymbolInfoInteger(TradeSymbol, SYMBOL_DIGITS);
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != TradeSymbol) continue;
+      long magic = PositionGetInteger(POSITION_MAGIC);
+      if(!BeAppliesTo(magic)) continue;
+
+      double open = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl   = PositionGetDouble(POSITION_SL);
+      if(sl <= 0.0) continue;                               // need original SL to size 1R
+      long   type = PositionGetInteger(POSITION_TYPE);
+      double risk = MathAbs(open - sl);
+      if(risk <= 0.0) continue;
+
+      double cur    = (type == POSITION_TYPE_BUY) ? SymbolInfoDouble(TradeSymbol, SYMBOL_BID)
+                                                  : SymbolInfoDouble(TradeSymbol, SYMBOL_ASK);
+      double profit = (type == POSITION_TYPE_BUY) ? (cur - open) : (open - cur);
+      if(profit < BreakevenAtR * risk) continue;            // not +R yet
+
+      if(type == POSITION_TYPE_BUY  && sl >= open) continue; // already at/above BE
+      if(type == POSITION_TYPE_SELL && sl <= open) continue;
+
+      double newsl = NormalizeDouble(open, digits);
+      double tp    = PositionGetDouble(POSITION_TP);
+      if(trade.PositionModify(ticket, newsl, tp))
+         PrintFormat("[BE] magic %I64d SL->entry %.*f (profit %.*f >= %.2fR)",
+                     magic, digits, newsl, digits, profit, BreakevenAtR);
+     }
   }
 
 //+------------------------------------------------------------------+
