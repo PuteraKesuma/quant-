@@ -13,6 +13,9 @@ cached decision or FLAT.
 """
 import io
 
+import matplotlib
+matplotlib.use("Agg")          # headless/server backend — render charts off the
+                               # main thread (uvicorn worker) without a GUI backend
 from loguru import logger
 
 
