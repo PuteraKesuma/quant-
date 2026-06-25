@@ -55,12 +55,14 @@ Biarkan jendelanya terbuka. Selesai.
 
 ## (Opsional) Auto-start saat VPS reboot
 Supaya benar-benar "tinggal nyala":
-1. **MT5 auto-login:** centang *Save account information* saat login; aktifkan *Auto
+1. **Brain auto-start:** sudah otomatis dipasang oleh `bootstrap_vps.ps1`. Mau pasang
+   manual / ulang? double-click **`INSTALL_AUTOSTART.bat`** (bikin shortcut
+   `START_TRADING.bat` di `shell:startup`). Saat Windows login, brain otomatis jalan.
+2. **MT5 auto-login:** centang *Save account information* saat login; aktifkan *Auto
    arrange / load last profile*. EA ikut ke-load dari profile tersimpan (langkah 6.3).
-2. **Brain auto-start:** buat shortcut `START_TRADING.bat` →
-   tekan `Win+R` → `shell:startup` → taruh shortcut di folder Startup.
-   Saat Windows login, brain otomatis jalan.
-3. Set VPS **auto-login Windows** (netplwiz) agar setelah reboot langsung masuk desktop.
+3. Set VPS **auto-login Windows** (`netplwiz` → hapus centang "Users must enter a user
+   name and password" → isi password) agar setelah reboot langsung masuk desktop dan
+   auto-start ikut jalan.
 
 ## Update kode di VPS nanti
 ```cmd

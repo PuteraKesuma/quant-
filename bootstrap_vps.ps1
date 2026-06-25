@@ -86,7 +86,16 @@ if ($envBackup) {
     Ok ".env dibuat dari template — perlu diisi API key."
 }
 
-# --- 5. Selesai -------------------------------------------------
+# --- 5. Auto-start saat Windows login ---------------------------
+Say "Memasang auto-start (brain nyala sendiri tiap login / setelah reboot)..."
+try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallDir "tools\install_autostart.ps1")
+    Ok "Auto-start terpasang."
+} catch {
+    Warn "Auto-start gagal dipasang otomatis — jalankan INSTALL_AUTOSTART.bat manual. ($_)"
+}
+
+# --- 6. Selesai -------------------------------------------------
 Write-Host "`n============================================================" -ForegroundColor Green
 Write-Host "  INSTALASI OTOMATIS SELESAI" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
@@ -107,6 +116,11 @@ SISA 3 LANGKAH MANUAL (sekali saja):
 
   3. PLAY
      Buka folder $InstallDir, double-click  START_TRADING.bat
+
+  (Auto-start sudah dipasang: brain nyala sendiri tiap Windows login.
+   Biar tahan reboot total, aktifkan juga auto-login Windows: jalankan
+   netplwiz, hapus centang "Users must enter a user name and password",
+   lalu isi password. Dan di MT5 centang "Save account" + load last profile.)
 
 "@ -ForegroundColor White
 
