@@ -15,6 +15,7 @@ from loguru import logger
 
 from ..fetch.base_fetcher import load_config
 from ..backtest.strategy_orb import ORBParams, generate_signals
+from ..backtest.strategy_zrev import ZRevParams, resample_1h
 from ..vision.analyzer import VisionAnalyzer
 from ..vision.capture import ChartCapturer
 from ..vision.journal import VisionJournal
@@ -91,9 +92,18 @@ class ORBStrategy(BaseStrategy):
         # per-slot params override the global `orb` section (so backtest config is untouched)
         oc = self.cfg["orb"]
         p = self.spec.get("params", {})
+
+        # DST-aware open: an equity-index cash open moves with US DST. The configured
+        # open is the US-summer (DST) UTC time; under US standard time it is 1h later.
+        if p.get("dst_open"):
+            h, m = self._dst_adjust_open(today, h, m)
+        open_str = f"{h:02d}:{m:02d}"
+
         range_minutes = p.get("range_minutes", oc["range_minutes"])
         use_sl = p.get("use_sl", True)
         range_filter = p.get("range_filter", False)         # skip abnormal-size opening ranges
+        trend_sma = p.get("trend_sma")                      # only trade WITH the daily-SMA trend
+        breakeven_r = p.get("breakeven_r")                  # once +Xr favorable, exit at entry on retrace (signal-driven BE)
         session_end = p.get("session_end_utc")              # e.g. "20:00" -> close by time
         params = ORBParams(
             range_minutes=range_minutes,
@@ -127,17 +137,24 @@ class ORBStrategy(BaseStrategy):
             if med and size > 0 and not (0.5 * med <= size <= 1.5 * med):
                 return self._flat(f"{date_tag}-{session}-FILTERED", now.isoformat())
 
-        trades = generate_signals(df, self.symbol, session, sess["open"], params)
+        trades = generate_signals(df, self.symbol, session, open_str, params)
         if not trades:
             return self._flat(f"{date_tag}-{session}-NOBREAK", now.isoformat())
 
         t = trades[0]
 
+        # trend filter: only take the breakout if it agrees with the daily-SMA trend
+        # (skips counter-trend breakouts — the weaker side; FLAT on data error = fail-safe)
+        if trend_sma:
+            tdir = self._trend_dir(int(trend_sma), today)
+            if tdir == 0 or (tdir > 0) != (t.direction == "long"):
+                return self._flat(f"{date_tag}-{session}-TRENDFILTER", now.isoformat())
+
         # live outcome: once price has touched SL/TP the trade is OVER (matches the
         # backtest, which exits there). Without this the slot keeps emitting BUY/SELL
         # all session — and if price has whipsawed past the SL, the EA spams the broker
         # with an already-underwater stop ("invalid stops", err 10016).
-        done = self._exit_hit(df, t, use_sl)
+        done = self._exit_hit(df, t, use_sl, breakeven_r)
         if done:
             return self._flat(f"{date_tag}-{session}-{t.direction.upper()}-{done}", now.isoformat())
 
@@ -151,20 +168,35 @@ class ORBStrategy(BaseStrategy):
             magic=self.magic, signal_id=sig_id, ts=now.isoformat(),
         )
 
-    def _exit_hit(self, df, t, use_sl) -> str | None:
+    def _exit_hit(self, df, t, use_sl, breakeven_r=None) -> str | None:
         """Has the live price touched the trade's SL/TP since entry? Returns the exit
-        reason ("SL"/"TP") if the trade is over, else None — so the slot can go FLAT
-        instead of chasing a finished (possibly stopped-out) trade."""
+        reason ("SL"/"TP"/"BE") if the trade is over, else None — so the slot can go
+        FLAT instead of chasing a finished (possibly stopped-out) trade.
+
+        breakeven_r (optional): once price has run >= breakeven_r * risk in favour, the
+        stop moves to ENTRY (0R). A retrace back to entry then exits at breakeven ("BE")
+        — a signal-driven exit (the slot emits FLAT; the EA closes). Validated to lift
+        the NAS 1:1 edge (OOS PF 1.33 -> 1.52). SL is checked before TP (pessimistic)."""
         post = df[df.index >= t.entry_ts]
         if post.empty:
             return None
+        risk = abs(t.entry_price - t.sl_price)
+        armed = False
         for _, bar in post.iterrows():
             if t.direction == "long":
+                if breakeven_r is not None and not armed and (bar["high"] - t.entry_price) >= breakeven_r * risk:
+                    armed = True
+                if armed and bar["low"] <= t.entry_price:
+                    return "BE"
                 if use_sl and bar["low"] <= t.sl_price:
                     return "SL"
                 if bar["high"] >= t.tp_price:
                     return "TP"
             else:  # short
+                if breakeven_r is not None and not armed and (t.entry_price - bar["low"]) >= breakeven_r * risk:
+                    armed = True
+                if armed and bar["high"] >= t.entry_price:
+                    return "BE"
                 if use_sl and bar["high"] >= t.sl_price:
                     return "SL"
                 if bar["low"] <= t.tp_price:
@@ -192,6 +224,47 @@ class ORBStrategy(BaseStrategy):
         self._med_cache = cache
         logger.info(f"[{self.name}] range median(20d) = {med}")
         return med
+
+    @staticmethod
+    def _dst_adjust_open(today, h, m):
+        """The configured open is the US-DST (summer) UTC open. When US Eastern is on
+        standard time (winter), the equity cash open is one hour later in UTC."""
+        import datetime
+        from zoneinfo import ZoneInfo
+        et = datetime.datetime(int(today.year), int(today.month), int(today.day), 12,
+                               tzinfo=ZoneInfo("America/New_York"))
+        if et.dst() == datetime.timedelta(0):           # standard time -> open 1h later
+            total = h * 60 + m + 60
+            return total // 60, total % 60
+        return h, m
+
+    def _trend_dir(self, n, today):
+        """+1/-1/0 = sign of (last completed daily close - SMA(n) of daily closes).
+        Only trade WITH this. Daily bars pulled straight from MT5 (n+5 bars), cached
+        once/day. 0 (and any error) -> the caller goes FLAT (fail-safe)."""
+        cache = getattr(self, "_trend_cache", {})
+        key = (today, n)
+        if key in cache:
+            return cache[key]
+        direction = 0
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            rates = mt5.copy_rates_from_pos(mt5_symbol, mt5.TIMEFRAME_D1, 0, n + 5)
+            if rates is not None and len(rates) > n:
+                closes = pd.Series(rates["close"], dtype=float)
+                closes = closes.iloc[:-1]                # drop today's still-forming daily bar
+                if len(closes) >= n:
+                    sma = float(closes.tail(n).mean())
+                    last = float(closes.iloc[-1])
+                    direction = 1 if last > sma else (-1 if last < sma else 0)
+        except Exception as e:
+            logger.warning(f"[{self.name}] trend_dir unavailable: {e}")
+            direction = 0
+        cache[key] = direction
+        self._trend_cache = cache
+        logger.info(f"[{self.name}] daily trend(SMA{n}) dir = {direction}")
+        return direction
 
 
 class VisionStrategy(BaseStrategy):
@@ -454,11 +527,239 @@ class VisionStrategy(BaseStrategy):
         return current < float(bars["low"].min())
 
 
+class ZRevStrategy(BaseStrategy):
+    """Z Strategy — always-in Donchian stop-and-reverse (validated XAU champion:
+    entry_n=100, exit_n=20, no filter). Same semantics as
+    pipeline/backtest/strategy_zrev.simulate(): while flat, enter on a break of the
+    entry channel (max/min of the last `entry_n` completed 1H bars); while in a
+    position, exit on a break of the (tighter) exit channel (last `exit_n` bars),
+    reversing only if the entry channel broke too.
+
+    Decisions use COMPLETED 1H bars for the channel and the CURRENT forming hour's
+    running high/low for the break, so entries fire near the channel level (matching
+    the backtest fill). Idempotent via a per-slot counter -> `signal_id` changes only
+    when the desired position changes. Exit is SIGNAL-driven (the server emits
+    FLAT/reverse as the trailing exit channel moves) — exactly like the backtest,
+    which has no fixed TP/SL. A protective broker SL is set at the exit-channel level
+    as a server-downtime backstop only (set `use_sl: false` to send no stop).
+
+    Restart-safe: on the first evaluate it reconciles `prev_action` from any existing
+    MT5 position under this magic, so a server restart never force-closes a live leg.
+    """
+
+    def __init__(self, spec: dict, cfg: dict, data: DataProvider):
+        super().__init__(spec, cfg, data)
+        p = spec.get("params", {})
+        self.entry_n = int(p.get("entry_n", 100))
+        self.exit_n = int(p.get("exit_n", 20))
+        self.use_sl = bool(p.get("use_sl", True))
+        # M1 bars pulled per poll; must cover > entry_n completed hours with margin.
+        self.history_bars = int(p.get("history_bars", 30000))   # ~500 trading hours
+        self._prev_action = "FLAT"
+        self._counter = 0
+        self._reconciled = False
+
+    def evaluate(self) -> SignalResponse:
+        now = pd.Timestamp.utcnow()
+        ts = now.isoformat()
+        self._reconcile_position()
+
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return self._emit("FLAT", 0.0, ts)               # no data -> hold flat
+        h = resample_1h(df)
+        if len(h) < 2:
+            return self._emit("FLAT", 0.0, ts)
+
+        # split off the still-forming current hour; decide on completed bars
+        cur_hour = now.floor("1h")
+        if h.index[-1] == cur_hour and len(h) > 1:
+            completed, forming = h.iloc[:-1], h.iloc[-1]
+        else:
+            completed, forming = h, h.iloc[-1]
+
+        if len(completed) < self.entry_n + 1:
+            return self._emit("FLAT", 0.0, ts)               # warming up
+
+        upper   = float(completed["high"].iloc[-self.entry_n:].max())
+        lower   = float(completed["low"].iloc[-self.entry_n:].min())
+        exit_up = float(completed["high"].iloc[-self.exit_n:].max())
+        exit_dn = float(completed["low"].iloc[-self.exit_n:].min())
+        hi, lo  = float(forming["high"]), float(forming["low"])
+
+        prev = self._prev_action
+        if prev == "BUY":                                    # currently long
+            if lo <= exit_dn:                                # long exits on exit channel
+                action = "SELL" if lo <= lower else "FLAT"   # reverse only if entry channel broke
+            else:
+                action = "BUY"
+        elif prev == "SELL":                                 # currently short
+            if hi >= exit_up:
+                action = "BUY" if hi >= upper else "FLAT"
+            else:
+                action = "SELL"
+        else:                                                # currently flat
+            if hi >= upper:
+                action = "BUY"
+            elif lo <= lower:
+                action = "SELL"
+            else:
+                action = "FLAT"
+
+        if action == "BUY":
+            sl = exit_dn if self.use_sl else 0.0
+        elif action == "SELL":
+            sl = exit_up if self.use_sl else 0.0
+        else:
+            sl = 0.0
+        return self._emit(action, sl, ts)
+
+    def _emit(self, action: str, sl: float, ts: str) -> SignalResponse:
+        if action != self._prev_action:                      # signal_id lifecycle
+            self._counter += 1
+            self._prev_action = action
+        sig_id = f"{self.symbol}-{self.name}-ZREV-{self._counter}"
+        if action == "FLAT":
+            return flat(self.name, self.symbol, self.magic, sig_id, ts)
+        logger.info(f"[{self.name}] ZREV {action} sl={round(sl, 5)} lot={self.lot}")
+        return SignalResponse(
+            strategy=self.name, symbol=self.symbol, action=action,
+            sl=round(sl, 5), tp=0.0, lot=self.lot,
+            magic=self.magic, signal_id=sig_id, ts=ts,
+        )
+
+    def _reconcile_position(self) -> None:
+        """On first poll, adopt any existing MT5 position under this magic as the
+        current state, so a server restart never emits FLAT and force-closes a leg."""
+        if self._reconciled:
+            return
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            for p in (mt5.positions_get(symbol=mt5_symbol) or ()):
+                if p.magic == self.magic:
+                    self._prev_action = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
+                    logger.info(f"[{self.name}] reconciled to existing {self._prev_action}")
+                    break
+        except Exception as e:
+            logger.warning(f"[{self.name}] reconcile skipped: {e}")
+        self._reconciled = True
+
+
+class MeanReversionStrategy(BaseStrategy):
+    """Mean-reversion (z-score fade) on H1 — validated XAU diversifier to Z
+    (OOS PF 2.7-3.2, 11/11 walk-forward, survives heavy cost, M1-fill confirmed).
+
+    When the latest COMPLETED H1 close sits >= entry_z standard deviations from the
+    N-bar mean, fade it back toward the mean: TP = the mean, SL = stop_z std beyond
+    the mean (a tight stop just past entry). Flat between signals; one entry per H1
+    bar. Exit is broker-managed (TP/SL set at entry) so an open trade is safe even if
+    the server dies; a brain-side time-exit emits FLAT after max_hold_hours if neither
+    is hit. Idempotent via a per-slot counter. Restart-safe: first poll adopts any
+    existing MT5 position under this magic; each poll detects a broker TP/SL closure
+    and resets to flat."""
+
+    def __init__(self, spec: dict, cfg: dict, data: DataProvider):
+        super().__init__(spec, cfg, data)
+        p = spec.get("params", {})
+        self.N = int(p.get("lookback", 20))
+        self.entry_z = float(p.get("entry_z", 2.5))
+        self.stop_z = float(p.get("stop_z", 3.0))
+        self.max_hold_h = int(p.get("max_hold_hours", 48))
+        self.history_bars = int(p.get("history_bars", 6000))
+        self._prev_action = "FLAT"
+        self._counter = 0
+        self._sl = 0.0
+        self._tp = 0.0
+        self._entry_ts = None
+        self._last_bar_ts = None
+        self._reconciled = False
+
+    def evaluate(self) -> SignalResponse:
+        now = pd.Timestamp.utcnow()
+        ts = now.isoformat()
+        self._reconcile()
+
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        h = resample_1h(df)
+        cur_hour = now.floor("1h")
+        completed = h.iloc[:-1] if (len(h) and h.index[-1] == cur_hour) else h
+        cc = completed["close"]
+        if len(cc) < self.N + 1:
+            return self._emit("FLAT", 0.0, 0.0, ts)               # warming up
+
+        # holding -> time-exit or hold (broker manages TP/SL)
+        if self._prev_action in ("BUY", "SELL"):
+            if self._entry_ts is not None and (now - self._entry_ts) >= pd.Timedelta(hours=self.max_hold_h):
+                return self._emit("FLAT", 0.0, 0.0, ts)
+            return self._emit(self._prev_action, self._sl, self._tp, ts)
+
+        # flat -> look for a fresh z-score entry (one per completed H1 bar)
+        last_bar = cc.index[-1]
+        if self._last_bar_ts is not None and last_bar <= self._last_bar_ts:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        win = cc.iloc[-self.N - 1:-1]
+        ma, sd = float(win.mean()), float(win.std())
+        if sd <= 0:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        z = (float(cc.iloc[-1]) - ma) / sd
+        if z <= -self.entry_z:
+            self._entry_ts = now; self._last_bar_ts = last_bar
+            return self._emit("BUY", round(ma - self.stop_z * sd, 5), round(ma, 5), ts)
+        if z >= self.entry_z:
+            self._entry_ts = now; self._last_bar_ts = last_bar
+            return self._emit("SELL", round(ma + self.stop_z * sd, 5), round(ma, 5), ts)
+        return self._emit("FLAT", 0.0, 0.0, ts)
+
+    def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:
+        if action != self._prev_action:
+            self._counter += 1
+            self._prev_action = action
+        sig_id = f"{self.symbol}-{self.name}-MR-{self._counter}"
+        if action == "FLAT":
+            self._entry_ts = None; self._sl = self._tp = 0.0
+            return flat(self.name, self.symbol, self.magic, sig_id, ts)
+        self._sl, self._tp = sl, tp
+        logger.info(f"[{self.name}] MR {action} sl={sl} tp={tp} lot={self.lot}")
+        return SignalResponse(
+            strategy=self.name, symbol=self.symbol, action=action,
+            sl=sl, tp=tp, lot=self.lot, magic=self.magic, signal_id=sig_id, ts=ts,
+        )
+
+    def _reconcile(self) -> None:
+        """First poll: adopt any existing MT5 position (restart-safe). Each poll: if
+        we think we hold but MT5 has no position under this magic, the broker closed
+        it (TP/SL) -> reset to flat. Never raises."""
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            pos = None
+            for p in (mt5.positions_get(symbol=mt5_symbol) or ()):
+                if p.magic == self.magic:
+                    pos = p; break
+            if not self._reconciled:
+                if pos is not None:
+                    self._prev_action = "BUY" if pos.type == mt5.POSITION_TYPE_BUY else "SELL"
+                    self._entry_ts = pd.Timestamp(pos.time, unit="s", tz="UTC")
+                    self._sl, self._tp = pos.sl, pos.tp
+                    logger.info(f"[{self.name}] reconciled to existing {self._prev_action}")
+                self._reconciled = True
+            elif self._prev_action in ("BUY", "SELL") and pos is None:
+                logger.info(f"[{self.name}] position closed by broker (TP/SL) -> FLAT")
+                self._prev_action = "FLAT"; self._entry_ts = None; self._sl = self._tp = 0.0
+        except Exception as e:
+            logger.warning(f"[{self.name}] reconcile skipped: {e}")
+
+
 # register new model types here; config `type:` selects one
 STRATEGY_TYPES = {
     "dummy": DummyStrategy,
     "orb": ORBStrategy,
     "vision": VisionStrategy,
+    "zrev": ZRevStrategy,        # Z Strategy (Donchian stop-and-reverse)
+    "mr": MeanReversionStrategy, # Mean-reversion z-score fade (diversifier)
 }
 
 

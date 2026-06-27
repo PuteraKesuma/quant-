@@ -113,46 +113,61 @@ live:
   # `type` picks the engine (dummy | orb | <future model>); the EA never changes.
   # Give every slot a UNIQUE magic so positions never collide.
   strategies:
-    - name: orb30_nas        # NAS100 rank-1 edge (research 2026-06-19, PF 1.28 OOS, WR 56%)
+    - name: orb30_nas        # NAS100 — re-validated 2026-06-26 (OOS PF 1.35, WF 10/11, WR 59%, DD 5R)
       type: orb
       symbol: NAS100
-      session: new_york      # opening = US cash open 13:30 UTC
-      lot: 0.01              # start safe on $1000; scale to 0.02-0.03 once confirmed
+      session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
+      lot: 0.01              # start safe; scale once confirmed live
       magic: 920617          # same magic -> existing US100 EA keeps managing it
       params:
         range_minutes: 30    # NY 30-min opening range
         tp_mult: 1.0         # TP = 1 x range   (RR 1:1)
         sl_mult: 1.0         # SL = 1 x range
         use_sl: true         # real stop (RR 1:1 needs it)
-        range_filter: true   # only trade if range is 0.5-1.5x its 20-day median (the edge booster)
+        dst_open: true       # FIX: NAS cash open moves with US DST; fixed 13:30 was wrong half the year
+        trend_sma: 50        # EDGE: only trade breakouts WITH the daily SMA50 trend (lifts OOS 1.02->1.35)
+        breakeven_r: 0.5     # DYNAMIC EXIT: once +0.5R, exit at entry on retrace (OOS 1.33->1.52, DD down, WF 11/11)
+        range_filter: false  # dropped: trend filter already does the heavy lifting; RF added ~nothing
         session_end_utc: "20:00"  # time-exit if neither SL/TP hit
 
-    - name: orb30_xau        # gold ORB (researched/backtested 2026-06-18, see _DOC/xau_orb_research.csv)
-      type: orb
-      symbol: XAUUSD
-      session: new_york      # XAU most robust on US session (London overfit IS, failed OOS)
-      lot: 0.01              # broker min for XAUUSD
-      magic: 920618          # UNIQUE (US100 uses 920617)
-      params:
-        range_minutes: 30    # NY 30-min opening range
-        tp_mult: 3.0         # TP = entry +/- 3 x range  (RR 1:3)
-        sl_mult: 1.0         # SL = entry -/+ 1 x range
-        use_sl: true         # XAU uses a stop (raised PF ~1.09 -> ~1.20 in backtest)
-        session_end_utc: "20:00"  # time-exit at US cash close if neither SL/TP hit
+    # DISABLED 2026-06-27 (lean-down): XAU-NY ORB berkorelasi dgn Z (dua-duanya gold) -> menambah
+    # drawdown (DD -$270 -> -$427 saat aktif) dgn tambahan return tipis. Gold cukup Z + vision.
+    # Uncomment utk mengaktifkan lagi. (magic 920618)
+    # - name: orb30_xau
+    #   type: orb
+    #   symbol: XAUUSD
+    #   session: new_york
+    #   lot: 0.01
+    #   magic: 920618
+    #   params:
+    #     range_minutes: 30
+    #     tp_mult: 3.0
+    #     sl_mult: 1.0
+    #     use_sl: true
+    #     session_end_utc: "20:00"
 
-    - name: orb30_xau_asia   # gold ORB, ASIA/Tokyo session — edge validated 2026-06-24 (sweep below)
-      type: orb
+    - name: zrev_xau        # Z Strategy: Donchian stop-and-reverse XAUUSD 1H (champion entry100/exit20)
+      type: zrev            #   research 2026-06-26: PF 1.43, 6/7 thn hijau, MC 5th-pct 1.11 (kalahkan ORB XAU)
       symbol: XAUUSD
-      session: asia          # Tokyo open 00:00 UTC = 08:00 WITA
-      lot: 0.01
-      magic: 920620          # UNIQUE
+      lot: 0.01             # broker min XAU; always-in (selalu 1 posisi long/short)
+      magic: 920622         # UNIQUE (920617=US100, 920618=orb_xau, 920620=orb_xau_asia lama, 920621=vision)
       params:
-        range_minutes: 30    # 30-min opening range
-        tp_mult: 1.0         # RR 1:1 — most ROBUST (IS pf 1.11 AND OOS pf 1.17, lowest DD -16R)
-        sl_mult: 1.0         # SL = 1 x range
-        use_sl: true
-        # no range_filter: the validated Asia edge is raw ORB (filter not tested here)
-        session_end_utc: "08:00"  # time-exit before London open if neither SL/TP hit
+        entry_n: 100        # entry channel = breakout 100 jam (Donchian)
+        exit_n: 20          # exit channel = break balik 20 jam (Turtle-style, bisa flat di chop)
+        use_sl: true        # broker SL backstop = level exit channel (proteksi kalau server mati)
+        history_bars: 30000 # M1 ditarik per poll (cukup utk >100 jam completed + margin)
+
+    - name: mr_xau          # Mean-reversion (z-score fade) XAUUSD H1 — diversifier ke Z
+      type: mr              #   riset 2026-06-27: OOS PF 2.7-3.2, WF 11/11, M1-fill konfirmed; Z+MR DD setengah
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920623         # UNIQUE
+      params:
+        lookback: 20        # N bar H1 utk mean/std
+        entry_z: 2.5        # entry saat harga >= 2.5 sigma dari mean
+        stop_z: 3.0         # SL di 3.0 sigma (0.5 di luar entry); TP = mean
+        max_hold_hours: 48  # time-exit (brain emit FLAT) kalau TP/SL tak kena
+        history_bars: 6000  # M1 per poll (cukup >20 jam completed + margin)
 
     - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — the single vision base
       type: vision
@@ -163,14 +178,14 @@ live:
         interval_minutes: 30      # Claude called at most once / 30 min (3 images/call ~ 3x tokens of single-TF)
         active_windows_utc: ["00:00-22:00"]   # Asia+London+NY = 08:00-06:00 WITA
         capture_mode: mt5
-        timeframes: ["H1", "M15", "M5"]       # highest->lowest: bias+zones (H1/M15), entry+SL/TP (M5)
+        timeframes: ["H4", "M15", "M5"]       # v2: H4 = macro bias (anti counter-trend), M5 = entry+SL/TP
         chart_bars: 200           # bars rendered per timeframe image
         model: "claude-opus-4-8"
         min_confidence: 65        # entry only if Claude conf >= this
         min_reverse_confidence: 75 # flipping an OPEN trade needs a higher bar (anti flip-flop)
-        min_rr: 1.5               # R:R below this -> FLAT (entry gate only; never force-closes open trades)
+        min_rr: 2.0               # v2: A+ setups earn >= 1:2 (was 1.5)
         price_offset: 0.0         # mt5 render = on-broker prices, no correction
-        prompt_file: "pipeline/vision/prompt_smc_mtf.md"
+        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
         # Lock-profit reversal (rule-based, no Claude, every poll): once in profit
         # >= 0.5R, close the moment price breaks the swing of the last 3 completed M5
         # bars against the trade. Banks profit fast; zero extra tokens.
