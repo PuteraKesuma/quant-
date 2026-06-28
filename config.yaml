@@ -191,14 +191,16 @@ live:
       params:
         interval_minutes: 30      # Claude called at most once / 30 min (3 images/call ~ 3x tokens of single-TF)
         active_windows_utc: ["00:00-22:00"]   # Asia+London+NY = 08:00-06:00 WITA
-        capture_mode: mt5
+        capture_mode: tradingview            # 2026-06-28: real TradingView charts (headless), not mt5 render
+        tv_symbol: "OANDA:XAUUSD"            # spot gold feed; closest to broker. Dynamic offset corrects the rest.
         timeframes: ["H4", "M15", "M5"]       # v2: H4 = macro bias (anti counter-trend), M5 = entry+SL/TP
         chart_bars: 200           # bars rendered per timeframe image
         model: "claude-opus-4-8"
         min_confidence: 65        # entry only if Claude conf >= this
         min_reverse_confidence: 75 # flipping an OPEN trade needs a higher bar (anti flip-flop)
         min_rr: 2.0               # v2: A+ setups earn >= 1:2 (was 1.5)
-        price_offset: 0.0         # mt5 render = on-broker prices, no correction
+        price_offset: 0.0         # static fallback only; TV mode uses DYNAMIC offset = broker_price - chart_price
+        max_offset_frac: 0.01     # reject (don't apply) a dynamic offset > 1% of price (guards a mis-read chart_price)
         prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
         # Lock-profit reversal (rule-based, no Claude, every poll): once in profit
         # >= 0.5R, close the moment price breaks the swing of the last 3 completed M5

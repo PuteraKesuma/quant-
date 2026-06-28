@@ -337,11 +337,15 @@ class VisionStrategy(BaseStrategy):
             try:
                 if self.timeframes:
                     images = self.capturer.capture_multi(self.symbol)
-                    decision = self.analyzer.analyze_multi(images, self.symbol, prev, bars)
+                    broker_px = self._entry_price()          # right after screenshot -> offset aligned
+                    decision = self.analyzer.analyze_multi(images, self.symbol, prev, bars,
+                                                           broker_price=broker_px)
                     png = images[-1][1] if images else b""   # lowest TF frame for the journal
                 else:
                     png = self.capturer.capture(self.symbol)
-                    decision = self.analyzer.analyze(png, self.symbol, prev, bars)
+                    broker_px = self._entry_price()
+                    decision = self.analyzer.analyze(png, self.symbol, prev, bars,
+                                                     broker_price=broker_px)
             except Exception:
                 logger.exception(f"[{self.name}] vision capture/analyze error")
                 return self.state.cached() or self._flat("ERROR", now)

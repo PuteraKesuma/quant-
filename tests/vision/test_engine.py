@@ -53,7 +53,7 @@ def test_engine_returns_orb_and_vision(tmp_path):
     engine = _engine(tmp_path)
     vis = _vision_slot(engine)
     vis.capturer.capture = lambda symbol: b"PNGBYTES"
-    vis.analyzer.analyze = lambda png, symbol, prev, bars: {
+    vis.analyzer.analyze = lambda png, symbol, prev, bars, broker_price=None: {
         "action": "BUY", "confidence": 80, "sl": 4100.0, "tp": 4250.0,
         "reason": "bullish OB", "structure": "bullish", "key_levels": {},
     }
@@ -90,7 +90,7 @@ def test_cadence_caches_between_intervals(tmp_path):
     vis = _vision_slot(engine)
     calls = {"n": 0}
 
-    def _analyze(png, symbol, prev, bars):
+    def _analyze(png, symbol, prev, bars, broker_price=None):
         calls["n"] += 1
         return {"action": "BUY", "confidence": 80, "sl": 4100.0, "tp": 4250.0,
                 "reason": "x", "structure": "bullish", "key_levels": {}}

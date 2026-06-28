@@ -31,6 +31,8 @@ class ChartCapturer:
         self.chart_bars = int(p.get("chart_bars", 200))
         self.chart_timeframe = str(p.get("chart_timeframe", "M5"))
         self.chart_url = p.get("chart_url", "") or ""
+        # TradingView symbol for capture_mode=tradingview (e.g. "OANDA:XAUUSD").
+        self.tv_symbol = (p.get("tv_symbol") or f"OANDA:{self.symbol}").strip()
         # Optional multi-timeframe list (highest->lowest), e.g. ["H1","M15","M5"].
         # When set, capture_multi() renders one image per timeframe (mt5 mode only).
         tfs = p.get("timeframes")
@@ -52,12 +54,14 @@ class ChartCapturer:
 
     def capture_multi(self, symbol: str) -> list[tuple[str, bytes]]:
         """Return [(timeframe_label, PNG bytes), ...] for each configured timeframe,
-        highest->lowest. mt5 mode only; falls back to a single image otherwise.
-        Raises on failure (the VisionStrategy wraps and degrades to cached/FLAT)."""
+        highest->lowest. Works for both mt5 (mplfinance) and tradingview (real TV
+        charts via headless Chromium). Raises on failure (the VisionStrategy wraps
+        and degrades to cached/FLAT)."""
+        tfs = self.timeframes or [self.chart_timeframe]
+        if self.mode == "tradingview":
+            from .tv_capture import capture_multi_tv
+            return capture_multi_tv(self.tv_symbol, tfs)
         if not self.timeframes:
-            return [(self.chart_timeframe, self.capture(symbol))]
-        if self.mode != "mt5":          # multi-TF rendering needs the mt5 renderer
-            logger.warning(f"timeframes set but capture_mode={self.mode!r}; using single image")
             return [(self.chart_timeframe, self.capture(symbol))]
         return [(tf, self._capture_mt5(symbol, timeframe=tf)) for tf in self.timeframes]
 
@@ -150,30 +154,10 @@ class ChartCapturer:
             return []
 
     # --------------------------------------------------------- tradingview mode
-    def _capture_tv(self, symbol: str) -> bytes:
-        if not self.chart_url:
-            raise ValueError("capture_mode=tradingview requires params.chart_url")
-        ctx = self._tv_context()
-        page = ctx.new_page()
-        try:
-            page.goto(self.chart_url, wait_until="networkidle")
-            page.wait_for_selector("canvas", timeout=15000)  # chart canvas
-            return page.screenshot(type="png")
-        finally:
-            page.close()
-
-    def _tv_context(self):
-        """Create the headless Chromium context once and reuse it across calls."""
-        if self._context is None:
-            try:
-                from playwright.sync_api import sync_playwright
-            except ImportError as e:
-                raise RuntimeError(
-                    "playwright not installed for capture_mode=tradingview. "
-                    "Run: pip install playwright && playwright install chromium"
-                ) from e
-            self._pw = sync_playwright().start()
-            self._browser = self._pw.chromium.launch(headless=True)
-            self._context = self._browser.new_context(
-                viewport={"width": 1280, "height": 720})
-        return self._context
+    def _capture_tv(self, symbol: str, timeframe: str | None = None) -> bytes:
+        """Single real-TradingView chart PNG via headless Chromium (no caching:
+        the browser is launched + torn down inside the call, so it is safe to run
+        from the server's threadpool worker threads)."""
+        from .tv_capture import capture_multi_tv
+        tf = timeframe or self.chart_timeframe
+        return capture_multi_tv(self.tv_symbol, [tf])[0][1]

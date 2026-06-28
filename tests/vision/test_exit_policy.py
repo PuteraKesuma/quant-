@@ -18,8 +18,8 @@ class _Cap:
 
 class _An:
     d = None
-    def analyze(self, *a): return self.d
-    def analyze_multi(self, *a): return self.d
+    def analyze(self, *a, **k): return self.d
+    def analyze_multi(self, *a, **k): return self.d
 
 class _Jr:
     def record(self, *a, **k): pass

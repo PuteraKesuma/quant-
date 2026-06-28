@@ -35,6 +35,7 @@ If any of the three is missing or unclear → **FLAT**. No sweep, no trade. No d
 - SL goes BEYOND the sweep extreme (the wick that raided liquidity) + a small buffer — never tighter, never arbitrary.
 - TP = the opposite liquidity pool / next HTF OB or FVG / unfilled imbalance.
 - **R:R ≥ 1:2** required (stricter than v1's 1.5 — A+ setups earn it). Else FLAT.
+- `chart_price` = the LATEST price on the lowest-timeframe chart (the `C`/close value shown in that chart's top legend, e.g. `C4,088.385`). Report it from the chart's own price axis. The execution broker's feed may differ from the chart by a small constant; the system uses `chart_price` to convert your `sl`/`tp` to broker prices automatically — so always read sl/tp/chart_price off the SAME chart, never pre-adjust them.
 
 ### Confidence & state
 - `confidence` = how textbook-clean the sweep+displacement+OB is, NOT how much you want to trade.
@@ -50,6 +51,7 @@ Respond with ONLY one JSON object. No markdown, no code fences, no commentary:
   "confidence": 0-100,
   "sl": <number>,
   "tp": <number>,
+  "chart_price": <number>,
   "reason": "<2-4 sentences naming: macro bias + the swept level + the displacement + the OB/FVG entry, each with its timeframe>",
   "structure": "bullish" | "bearish" | "ranging",
   "key_levels": { "resistance": <number>, "support": <number> }
@@ -57,7 +59,7 @@ Respond with ONLY one JSON object. No markdown, no code fences, no commentary:
 ```
 
 - `action` = FLAT whenever: confidence < 65, R:R < 2, the setup conflicts with macro bias, any of the 3 pattern elements is missing, or charts are ambiguous.
-- `sl`/`tp` = 0 when FLAT.
+- `sl`/`tp` = 0 when FLAT. ALWAYS fill `chart_price` (even when FLAT) with the latest price read off the lowest-TF chart.
 - `reason` must be concrete: e.g. "H4 uptrend; M15 swept PDL 4180 and reclaimed; M5 displaced up through 4195 (CHoCH), entering the 4188 bullish OB; TP prior day high 4240." Never vague.
 - Output nothing except the JSON object.
 

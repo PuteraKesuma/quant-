@@ -30,29 +30,36 @@ class VisionAnalyzer:
         self.model = p.get("model", "claude-opus-4-8")
         self.max_tokens = int(p.get("max_tokens", vcfg.get("max_tokens", 1024)))
         self.prompt_file = p.get("prompt_file", "pipeline/vision/prompt.md")
-        self.price_offset = float(p.get("price_offset", 0.0))
+        self.price_offset = float(p.get("price_offset", 0.0))   # static fallback (manual)
+        self.capture_mode = p.get("capture_mode", "mt5")
+        # safety clamp for the dynamic TV->broker offset: ignore an offset larger than
+        # this fraction of price (guards against a grossly mis-read chart_price).
+        self.max_offset_frac = float(p.get("max_offset_frac", 0.01))
         self._system: str | None = None        # cached after first read
         self._client = None                     # lazy; tests may inject a mock
         load_dotenv()                           # populate ANTHROPIC_API_KEY from .env
 
     # ------------------------------------------------------------------ public
     def analyze(self, png: bytes, symbol: str, prev_action: str,
-                bars_in_state: int) -> dict:
-        """Return the model's decision dict. Never raises — safe FLAT on error."""
+                bars_in_state: int, broker_price: float | None = None) -> dict:
+        """Return the model's decision dict. Never raises — safe FLAT on error.
+        `broker_price` (live FBS price) drives the TV->broker SL/TP correction."""
         try:
             b64 = base64.standard_b64encode(png).decode("utf-8")
             content = [
                 {"type": "image", "source": {
                     "type": "base64", "media_type": "image/png", "data": b64}},
-                {"type": "text", "text": self._user_text(symbol, prev_action, bars_in_state)},
+                {"type": "text", "text": self._user_text(symbol, prev_action, bars_in_state,
+                                                          broker_price=broker_price)},
             ]
-            return self._call(content, symbol)
+            return self._call(content, symbol, broker_price)
         except Exception as e:                  # fail-safe: never propagate
             logger.exception(f"[vision:{symbol}] analyze failed")
             return self._safe_flat(f"analyze error: {e}")
 
     def analyze_multi(self, images: list[tuple[str, bytes]], symbol: str,
-                      prev_action: str, bars_in_state: int) -> dict:
+                      prev_action: str, bars_in_state: int,
+                      broker_price: float | None = None) -> dict:
         """Like analyze() but sends several timeframe images (highest->lowest) in
         one call so the model can use HTF bias + LTF entry. Never raises."""
         try:
@@ -64,14 +71,16 @@ class VisionAnalyzer:
                 content.append({"type": "image", "source": {
                     "type": "base64", "media_type": "image/png", "data": b64}})
             content.append({"type": "text",
-                            "text": self._user_text(symbol, prev_action, bars_in_state, tfs)})
-            return self._call(content, symbol)
+                            "text": self._user_text(symbol, prev_action, bars_in_state, tfs,
+                                                    broker_price=broker_price)})
+            return self._call(content, symbol, broker_price)
         except Exception as e:                  # fail-safe: never propagate
             logger.exception(f"[vision:{symbol}] analyze_multi failed")
             return self._safe_flat(f"analyze error: {e}")
 
     # ----------------------------------------------------------------- helpers
-    def _call(self, content: list[dict], symbol: str) -> dict:
+    def _call(self, content: list[dict], symbol: str,
+              broker_price: float | None = None) -> dict:
         """Send the prepared content blocks to Claude, parse + log. May raise."""
         client = self._get_client()
         resp = client.messages.create(
@@ -81,15 +90,16 @@ class VisionAnalyzer:
             messages=[{"role": "user", "content": content}],
         )
         raw = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-        decision = self._apply_offset(self._parse(raw))
+        decision = self._apply_offset(self._parse(raw), broker_price)
         logger.info(
-            f"[vision:{symbol}] action={decision['action']} "
-            f"conf={decision['confidence']} sl={decision['sl']} tp={decision['tp']}"
+            f"[vision:{symbol}] action={decision['action']} conf={decision['confidence']} "
+            f"chart_px={decision.get('chart_price')} off={decision.get('offset_applied', 0)} "
+            f"sl={decision['sl']} tp={decision['tp']}"
         )
         return decision
 
     def _user_text(self, symbol: str, prev_action: str, bars_in_state: int,
-                   tfs: list[str] | None = None) -> str:
+                   tfs: list[str] | None = None, broker_price: float | None = None) -> str:
         """Runtime-context user message. With `tfs` it frames the multi-TF read."""
         if tfs:
             head = (
@@ -101,11 +111,21 @@ class VisionAnalyzer:
             )
         else:
             head = "Analyze this chart. "
+        # Report chart_price = the latest price visible on the LOWEST-TF chart (the 'C'
+        # value in the legend). The execution broker's feed may differ by a small
+        # constant; the system corrects SL/TP automatically using chart_price, so read
+        # ALL levels straight off the chart's own price axis.
+        anchor = ""
+        if broker_price:
+            anchor = (f"- Broker live price (for reference only; do NOT shift your reads): "
+                      f"{broker_price}\n")
         return (
             head + "Runtime context:\n"
             f"- ServerSymbol: {symbol}\n"
+            f"{anchor}"
             f"- Current open slot action (previous decision): {prev_action}\n"
             f"- Slot has been in this state for: {bars_in_state} candles\n\n"
+            "Read sl, tp AND chart_price off the chart's own price axis. "
             "Decide the desired end state now."
         )
 
@@ -152,14 +172,36 @@ class VisionAnalyzer:
             "confidence": int(float(data.get("confidence", 0) or 0)),
             "sl": float(data.get("sl", 0) or 0),
             "tp": float(data.get("tp", 0) or 0),
+            "chart_price": float(data.get("chart_price", 0) or 0),  # latest price read off chart
             "reason": str(data.get("reason", "")),
             "structure": str(data.get("structure", "")),
             "key_levels": kl if isinstance(kl, dict) else {},
         }
 
-    def _apply_offset(self, d: dict) -> dict:
-        """Shift sl/tp by `price_offset` (TV->FBS correction). 0.0 for capture_mode=mt5."""
-        if self.price_offset and d["action"] != "FLAT":
+    def _apply_offset(self, d: dict, broker_price: float | None = None) -> dict:
+        """Correct sl/tp from chart prices to BROKER prices.
+
+        TradingView capture: the chart feed differs from the broker by a small,
+        slowly-varying constant. We measure it live as `broker_price - chart_price`
+        (both from the same instant) and shift sl/tp by it, so orders land at broker
+        prices. A grossly mis-read chart_price (offset > max_offset_frac of price) is
+        rejected and the levels are left unshifted (fail-safe). Other modes use the
+        static `price_offset` (0.0 by default)."""
+        if d["action"] == "FLAT":
+            return d
+        if self.capture_mode == "tradingview" and broker_price and d.get("chart_price"):
+            off = broker_price - d["chart_price"]
+            if abs(off) <= self.max_offset_frac * broker_price:
+                d["sl"] = round(d["sl"] + off, 5)
+                d["tp"] = round(d["tp"] + off, 5)
+                d["offset_applied"] = round(off, 5)
+            else:
+                logger.warning(
+                    f"[vision:{self.symbol}] dynamic offset {off:.3f} exceeds "
+                    f"{self.max_offset_frac:.1%} of {broker_price} — NOT applied "
+                    f"(chart_price {d['chart_price']} likely mis-read); sl/tp unshifted")
+            return d
+        if self.price_offset:                       # static fallback (manual)
             d["sl"] = round(d["sl"] + self.price_offset, 5)
             d["tp"] = round(d["tp"] + self.price_offset, 5)
         return d
