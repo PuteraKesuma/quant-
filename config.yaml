@@ -113,7 +113,9 @@ live:
   # `type` picks the engine (dummy | orb | <future model>); the EA never changes.
   # Give every slot a UNIQUE magic so positions never collide.
   strategies:
-    - name: orb30_nas        # NAS100 — re-validated 2026-06-26 (OOS PF 1.35, WF 10/11, WR 59%, DD 5R)
+    - name: orb30_nas        # NAS100 — REPRODUCED 2026-06-28 (full live logic, M1 fill):
+                             #   OOS PF 1.40, IS 1.28, 6/6 thn hijau, MC 5th-pct 1.04, 0% order invalid.
+                             #   Edge nyata tapi TIPIS (exp ~0.08R). Klaim lama "1.52" sedikit optimis.
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
@@ -157,18 +159,30 @@ live:
         use_sl: true        # broker SL backstop = level exit channel (proteksi kalau server mati)
         history_bars: 30000 # M1 ditarik per poll (cukup utk >100 jam completed + margin)
 
-    - name: mr_xau          # Mean-reversion (z-score fade) XAUUSD H1 — diversifier ke Z
-      type: mr              #   riset 2026-06-27: OOS PF 2.7-3.2, WF 11/11, M1-fill konfirmed; Z+MR DD setengah
-      symbol: XAUUSD
-      lot: 0.01
-      magic: 920623         # UNIQUE
-      params:
-        lookback: 20        # N bar H1 utk mean/std
-        entry_z: 2.5        # entry saat harga >= 2.5 sigma dari mean
-        stop_z: 3.0         # SL di 3.0 sigma (0.5 di luar entry); TP = mean
-        max_hold_hours: 48  # time-exit (brain emit FLAT) kalau TP/SL tak kena
-        history_bars: 6000  # M1 per poll (cukup >20 jam completed + margin)
+    # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
+    # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
+    # entry_z 2.5 < stop_z 3.0 berarti SETIAP sinyal dengan |z| >= 3.0 punya SL di sisi
+    # SALAH dari entry (BUY: SL >= entry; SELL: SL <= entry) -> order DITOLAK broker live.
+    # 54% sinyal seperti ini. Validator lama (mr_validate.py/m1_validate.py, tak pernah
+    # di-commit) membukukan `stop-entry` sebagai PROFIT untuk order tak-fillable itu ->
+    # PF palsu OOS 2.74. Setelah order invalid dibuang + fill M1 jujur (SL sebelum TP):
+    # OOS PF 0.72, WR 10%, 1/6 tahun hijau, MC 5th-pct 0.48 = RUGI. JANGAN diaktifkan.
+    # - name: mr_xau
+    #   type: mr
+    #   symbol: XAUUSD
+    #   lot: 0.01
+    #   magic: 920623
+    #   params:
+    #     lookback: 20
+    #     entry_z: 2.5
+    #     stop_z: 3.0
+    #     max_hold_hours: 48
+    #     history_bars: 6000
 
+    # vision_smc_xau: UNVERIFIED by construction (audit 2026-06-28). Discretionary LLM —
+    # tak bisa di-backtest (tak ada deret sinyal historis yang reproducible). Biarkan
+    # jalan di DEMO sbg forward-test; JANGAN aktifkan utk uang RIIL sebelum ada track
+    # record live yang cukup. Bukan "REPRODUCED".
     - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — the single vision base
       type: vision
       symbol: XAUUSD
