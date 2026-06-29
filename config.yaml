@@ -148,16 +148,19 @@ live:
     #     use_sl: true
     #     session_end_utc: "20:00"
 
-    - name: zrev_xau        # Z Strategy: Donchian stop-and-reverse XAUUSD 1H (champion entry100/exit20)
-      type: zrev            #   research 2026-06-26: PF 1.43, 6/7 thn hijau, MC 5th-pct 1.11 (kalahkan ORB XAU)
+    - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
+      type: zrev            #   2026-06-29 audit (entry20/exit20 = always-in): IS PF 1.09, OOS 1.58,
+                            #   MC 5th-pct 1.18, 5/6 thn hijau, 0% order invalid. ~4 trade/minggu,
+                            #   hold ~1 hari, SELALU ada posisi (flip ~tiap 1.8 hari). maxDD -$501 @0.01
+                            #   lot -> under-capitalized di $400 demo; real money butuh ~$1500+.
       symbol: XAUUSD
       lot: 0.01             # broker min XAU; always-in (selalu 1 posisi long/short)
       magic: 920622         # UNIQUE (920617=US100, 920618=orb_xau, 920620=orb_xau_asia lama, 920621=vision)
       params:
-        entry_n: 100        # entry channel = breakout 100 jam (Donchian)
-        exit_n: 20          # exit channel = break balik 20 jam (Turtle-style, bisa flat di chop)
-        use_sl: true        # broker SL backstop = level exit channel (proteksi kalau server mati)
-        history_bars: 30000 # M1 ditarik per poll (cukup utk >100 jam completed + margin)
+        entry_n: 20         # entry channel = breakout 20 jam (Donchian)
+        exit_n: 20          # exit = entry -> PURE always-in S&R (tidak pernah flat; flip tiap breakout)
+        use_sl: true        # broker SL backstop = level channel lawan (proteksi kalau server mati)
+        history_bars: 30000 # M1 ditarik per poll (jauh lebih dari cukup utk >20 jam completed)
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
