@@ -570,6 +570,15 @@ class ZRevStrategy(BaseStrategy):
         # the counter-secular-trend trades that drive the drawdown (PF up, DD -23%).
         self.daily_filter = bool(p.get("daily_filter", False))
         self.daily_sma = int(p.get("daily_sma", 50))
+        # Dynamic lot by entry MOMENTUM (z-score of price vs 20-bar mean, direction-
+        # adjusted). Validated: strong-momentum breakouts are much better trades, so
+        # size up on high z, min lot on weak. Linear lot_min..lot_max over z_lo..z_hi,
+        # floored to the 0.01 step. Kelly-bounded; fail-safe -> lot on any error.
+        self.dynamic_lot = bool(p.get("dynamic_lot", False))
+        self.lot_min = float(p.get("lot_min", self.lot))
+        self.lot_max = float(p.get("lot_max", self.lot))
+        self.lot_z_lo = float(p.get("lot_z_lo", 1.0))
+        self.lot_z_hi = float(p.get("lot_z_hi", 3.0))
         self._prev_action = "FLAT"
         self._counter = 0
         self._reconciled = False
@@ -642,19 +651,43 @@ class ZRevStrategy(BaseStrategy):
             sl = exit_up if self.use_sl else 0.0
         else:
             sl = 0.0
-        return self._emit(action, sl, ts)
+        lot = self._dynamic_lot(completed, forming, action) if action in ("BUY", "SELL") else self.lot
+        return self._emit(action, sl, ts, lot)
 
-    def _emit(self, action: str, sl: float, ts: str) -> SignalResponse:
+    def _dynamic_lot(self, completed, forming, action: str) -> float:
+        """Lot from entry momentum: z = (price - 20-bar mean)/std, signed so a strong
+        breakout in the trade direction -> bigger lot. Linear lot_min..lot_max over
+        z_lo..z_hi, floored to 0.01. Fail-safe -> base lot on any error."""
+        if not self.dynamic_lot:
+            return self.lot
+        try:
+            win = completed["close"].iloc[-20:]
+            ma, sd = float(win.mean()), float(win.std())
+            if sd <= 0:
+                return self.lot_min
+            z = (float(forming["close"]) - ma) / sd
+            z_dir = z if action == "BUY" else -z
+            frac = max(0.0, min(1.0, (z_dir - self.lot_z_lo) / max(self.lot_z_hi - self.lot_z_lo, 1e-9)))
+            raw = self.lot_min + frac * (self.lot_max - self.lot_min)
+            lot = max(self.lot_min, min(self.lot_max, int(round(raw / 0.01 - 1e-9)) * 0.01))
+            logger.info(f"[{self.name}] dynamic lot: z_dir={z_dir:.2f} -> lot={lot:.2f}")
+            return round(lot, 2)
+        except Exception as e:
+            logger.warning(f"[{self.name}] dynamic_lot fallback: {e}")
+            return self.lot
+
+    def _emit(self, action: str, sl: float, ts: str, lot: float | None = None) -> SignalResponse:
         if action != self._prev_action:                      # signal_id lifecycle
             self._counter += 1
             self._prev_action = action
         sig_id = f"{self.symbol}-{self.name}-ZREV-{self._counter}"
         if action == "FLAT":
             return flat(self.name, self.symbol, self.magic, sig_id, ts)
-        logger.info(f"[{self.name}] ZREV {action} sl={round(sl, 5)} lot={self.lot}")
+        use_lot = self.lot if lot is None else lot
+        logger.info(f"[{self.name}] ZREV {action} sl={round(sl, 5)} lot={use_lot}")
         return SignalResponse(
             strategy=self.name, symbol=self.symbol, action=action,
-            sl=round(sl, 5), tp=0.0, lot=self.lot,
+            sl=round(sl, 5), tp=0.0, lot=use_lot,
             magic=self.magic, signal_id=sig_id, ts=ts,
         )
 
