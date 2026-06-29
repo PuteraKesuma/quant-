@@ -158,9 +158,11 @@ live:
       magic: 920622         # UNIQUE (920617=US100, 920618=orb_xau, 920620=orb_xau_asia lama, 920621=vision)
       params:
         entry_n: 20         # entry channel = breakout 20 jam (Donchian)
-        exit_n: 20          # exit = entry -> PURE always-in S&R (tidak pernah flat; flip tiap breakout)
+        exit_n: 20          # exit = entry -> S&R; dgn trend_filter -> flat saat lawan tren (bukan reverse)
         use_sl: true        # broker SL backstop = level channel lawan (proteksi kalau server mati)
-        history_bars: 30000 # M1 ditarik per poll (jauh lebih dari cukup utk >20 jam completed)
+        trend_filter: true  # 2026-06-29: filter tren EMA -> DD -$501->-$406 (-19%), PF 1.58->1.63, MC 1.17
+        trend_ema: 100      # hanya long saat close>EMA100, hanya short saat close<EMA100 (skip whipsaw chop)
+        history_bars: 30000 # M1 ditarik per poll (cukup utk EMA100 + channel + margin)
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:

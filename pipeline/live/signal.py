@@ -559,6 +559,12 @@ class ZRevStrategy(BaseStrategy):
         self.use_sl = bool(p.get("use_sl", True))
         # M1 bars pulled per poll; must cover > entry_n completed hours with margin.
         self.history_bars = int(p.get("history_bars", 30000))   # ~500 trading hours
+        # Optional EMA trend filter (DD reducer): only enter WITH the trend; an
+        # against-trend channel break EXITS to flat instead of reversing. Matches
+        # strategy_zrev.simulate(trend_filter=...). Audited: EMA100 cuts XAU maxDD
+        # ~19% and lifts PF. Off => pure always-in S&R (never flat).
+        self.trend_filter = bool(p.get("trend_filter", False))
+        self.trend_ema = int(p.get("trend_ema", 200))
         self._prev_action = "FLAT"
         self._counter = 0
         self._reconciled = False
@@ -582,7 +588,10 @@ class ZRevStrategy(BaseStrategy):
         else:
             completed, forming = h, h.iloc[-1]
 
-        if len(completed) < self.entry_n + 1:
+        min_bars = self.entry_n + 1
+        if self.trend_filter:
+            min_bars = max(min_bars, self.trend_ema + 1)     # EMA needs its span to settle
+        if len(completed) < min_bars:
             return self._emit("FLAT", 0.0, ts)               # warming up
 
         upper   = float(completed["high"].iloc[-self.entry_n:].max())
@@ -591,21 +600,29 @@ class ZRevStrategy(BaseStrategy):
         exit_dn = float(completed["low"].iloc[-self.exit_n:].min())
         hi, lo  = float(forming["high"]), float(forming["low"])
 
+        # trend gate (from completed bars only -> no lookahead): with the filter on,
+        # only long while close>EMA, only short while close<EMA.
+        can_long = can_short = True
+        if self.trend_filter:
+            ema = completed["close"].ewm(span=self.trend_ema, adjust=False).mean()
+            up_trend = float(completed["close"].iloc[-1]) > float(ema.iloc[-1])
+            can_long, can_short = up_trend, not up_trend
+
         prev = self._prev_action
         if prev == "BUY":                                    # currently long
             if lo <= exit_dn:                                # long exits on exit channel
-                action = "SELL" if lo <= lower else "FLAT"   # reverse only if entry channel broke
+                action = "SELL" if (lo <= lower and can_short) else "FLAT"  # reverse only if entry broke + trend allows
             else:
                 action = "BUY"
         elif prev == "SELL":                                 # currently short
             if hi >= exit_up:
-                action = "BUY" if hi >= upper else "FLAT"
+                action = "BUY" if (hi >= upper and can_long) else "FLAT"
             else:
                 action = "SELL"
         else:                                                # currently flat
-            if hi >= upper:
+            if hi >= upper and can_long:
                 action = "BUY"
-            elif lo <= lower:
+            elif lo <= lower and can_short:
                 action = "SELL"
             else:
                 action = "FLAT"
