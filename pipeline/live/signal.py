@@ -565,6 +565,11 @@ class ZRevStrategy(BaseStrategy):
         # ~19% and lifts PF. Off => pure always-in S&R (never flat).
         self.trend_filter = bool(p.get("trend_filter", False))
         self.trend_ema = int(p.get("trend_ema", 200))
+        # Optional SECOND (higher-timeframe) gate: also require the DAILY SMA trend to
+        # agree before entering (multi-timeframe alignment). Audited DD reducer: cuts
+        # the counter-secular-trend trades that drive the drawdown (PF up, DD -23%).
+        self.daily_filter = bool(p.get("daily_filter", False))
+        self.daily_sma = int(p.get("daily_sma", 50))
         self._prev_action = "FLAT"
         self._counter = 0
         self._reconciled = False
@@ -607,6 +612,10 @@ class ZRevStrategy(BaseStrategy):
             ema = completed["close"].ewm(span=self.trend_ema, adjust=False).mean()
             up_trend = float(completed["close"].iloc[-1]) > float(ema.iloc[-1])
             can_long, can_short = up_trend, not up_trend
+        if self.daily_filter:                            # higher-TF confirmation
+            dd = self._daily_trend(now)
+            can_long = can_long and (dd == 1)
+            can_short = can_short and (dd == -1)
 
         prev = self._prev_action
         if prev == "BUY":                                    # currently long
@@ -648,6 +657,34 @@ class ZRevStrategy(BaseStrategy):
             sl=round(sl, 5), tp=0.0, lot=self.lot,
             magic=self.magic, signal_id=sig_id, ts=ts,
         )
+
+    def _daily_trend(self, now) -> int:
+        """+1/-1/0 = sign of (last completed daily close - SMA(daily_sma)). Daily bars
+        pulled from MT5 (D1), cached once/day. 0 (and any error) -> blocks NEW entries
+        (fail-safe). Mirrors the backtest's daily-trend gate."""
+        today = now.normalize()
+        cache = getattr(self, "_dtrend_cache", {})
+        key = (today, self.daily_sma)
+        if key in cache:
+            return cache[key]
+        direction = 0
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            rates = mt5.copy_rates_from_pos(mt5_symbol, mt5.TIMEFRAME_D1, 0, self.daily_sma + 5)
+            if rates is not None and len(rates) > self.daily_sma:
+                closes = pd.Series(rates["close"], dtype=float).iloc[:-1]   # drop forming day
+                if len(closes) >= self.daily_sma:
+                    sma = float(closes.tail(self.daily_sma).mean())
+                    last = float(closes.iloc[-1])
+                    direction = 1 if last > sma else (-1 if last < sma else 0)
+        except Exception as e:
+            logger.warning(f"[{self.name}] daily_trend unavailable: {e}")
+            direction = 0
+        cache[key] = direction
+        self._dtrend_cache = cache
+        logger.info(f"[{self.name}] daily trend(SMA{self.daily_sma}) dir = {direction}")
+        return direction
 
     def _reconcile_position(self) -> None:
         """On first poll, adopt any existing MT5 position under this magic as the
