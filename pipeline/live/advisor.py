@@ -49,9 +49,21 @@ def _parse(raw: str) -> dict:
     verdict = str(d.get("verdict", "NEUTRAL")).upper()
     if verdict not in ("CONFIRM", "NEUTRAL", "CAUTION"):
         verdict = "NEUTRAL"
+
+    def _num(key):                               # price level or None
+        v = d.get(key)
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
     return {
         "verdict": verdict,
         "confidence": int(float(d.get("confidence", 0) or 0)),
+        "entry_quality": str(d.get("entry_quality", "")).upper(),
+        "suggested_tp": _num("suggested_tp"),    # LOGGED suggestion, never executed
+        "suggested_sl": _num("suggested_sl"),
+        "suggested_action": str(d.get("suggested_action", "")).upper(),
         "macro": str(d.get("macro", "")),
         "micro": str(d.get("micro", "")),
         "event_risk": str(d.get("event_risk", "")),
@@ -89,8 +101,10 @@ def annotate(images, symbol, direction, entry_price, *, client, system, model,
         return _parse(raw)
     except Exception as e:                       # fail-safe: advisor must never crash
         logger.exception(f"[advisor:{symbol}] annotate failed")
-        return {"verdict": "ERROR", "confidence": 0, "macro": "", "micro": "",
-                "event_risk": "", "agree_with_brain": None, "note": f"annotate error: {e}"}
+        return {"verdict": "ERROR", "confidence": 0, "entry_quality": "",
+                "suggested_tp": None, "suggested_sl": None, "suggested_action": "",
+                "macro": "", "micro": "", "event_risk": "", "agree_with_brain": None,
+                "note": f"annotate error: {e}"}
 
 
 # ----------------------------------------------------------------- the process

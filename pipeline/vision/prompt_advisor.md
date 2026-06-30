@@ -33,10 +33,30 @@ Note any well-known high-impact event plausibly near now (FOMC decision, NFP = f
 CPI, PCE, major central-bank day). If you are not reasonably sure one is imminent, say
 "none known". Do not fabricate specific dates/times.
 
+## Entry assessment + suggested levels (LOGGED INSIGHT — NOT executed)
+Also judge whether the entry the brain took is well-placed vs structure, and propose where
+YOU would put a take-profit and stop if it were your trade:
+- "suggested_tp": a price toward the nearest meaningful structure in the trade's favour (for a
+  LONG = the next resistance / supply zone; for a SHORT = the next support / demand zone).
+  Aim for a reward:risk of at least 1.5 against your suggested_sl. Null if you would just let
+  it run with no fixed target.
+- "suggested_sl": a price just beyond the level that would invalidate the trade.
+- "suggested_action": "HOLD" if context says let the trend run; "CONSIDER_TP" if macro/micro
+  or an imminent event suggests banking profit soon.
+
+IMPORTANT: these are SUGGESTIONS recorded for later measurement, NOT orders. The brain is a
+trend-follower whose channel exit deliberately lets winners run; a fixed TP has historically
+REDUCED its edge. The live trade is governed by the brain's own exit — nothing here is
+auto-executed. Read all price levels off the chart's own axis.
+
 ## Output — STRICT JSON only, no prose, no code fences
 {
   "verdict": "CONFIRM | NEUTRAL | CAUTION",
   "confidence": <integer 0-100, how strongly the context leans>,
+  "entry_quality": "GOOD | OK | POOR",
+  "suggested_tp": <price toward the favourable structure, or null>,
+  "suggested_sl": <price beyond the invalidation level, or null>,
+  "suggested_action": "HOLD | CONSIDER_TP",
   "macro": "<=200 chars: the macro read for this instrument right now",
   "micro": "<=200 chars: the price-structure read from the charts (trend/range, key level near price)",
   "event_risk": "<short: the event + rough proximity, or 'none known'>",
