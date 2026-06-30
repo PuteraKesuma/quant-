@@ -556,6 +556,7 @@ class ZRevStrategy(BaseStrategy):
         p = spec.get("params", {})
         self.entry_n = int(p.get("entry_n", 100))
         self.exit_n = int(p.get("exit_n", 20))
+        self.timeframe = str(p.get("timeframe", "1h"))   # bar timeframe for channels (1h, 4h, ...)
         self.use_sl = bool(p.get("use_sl", True))
         # M1 bars pulled per poll; must cover > entry_n completed hours with margin.
         self.history_bars = int(p.get("history_bars", 30000))   # ~500 trading hours
@@ -596,13 +597,13 @@ class ZRevStrategy(BaseStrategy):
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
             return self._emit("FLAT", 0.0, ts)               # no data -> hold flat
-        h = resample_1h(df)
+        h = self._resample(df)
         if len(h) < 2:
             return self._emit("FLAT", 0.0, ts)
 
-        # split off the still-forming current hour; decide on completed bars
-        cur_hour = now.floor("1h")
-        if h.index[-1] == cur_hour and len(h) > 1:
+        # split off the still-forming current bar; decide on completed bars
+        cur_bar = now.floor(self.timeframe)
+        if h.index[-1] == cur_bar and len(h) > 1:
             completed, forming = h.iloc[:-1], h.iloc[-1]
         else:
             completed, forming = h, h.iloc[-1]
@@ -716,6 +717,13 @@ class ZRevStrategy(BaseStrategy):
             magic=self.magic, signal_id=sig_id, ts=ts,
         )
 
+    def _resample(self, df):
+        """1m OHLCV -> self.timeframe bars (1h, 4h, ...), dropping empty hours."""
+        return (df.resample(self.timeframe)
+                  .agg({"open": "first", "high": "max", "low": "min",
+                        "close": "last", "volume": "sum"})
+                  .dropna(subset=["open"]))
+
     def _daily_trend(self, now) -> int:
         """+1/-1/0 = sign of (last completed daily close - SMA(daily_sma)). Daily bars
         pulled from MT5 (D1), cached once/day. 0 (and any error) -> blocks NEW entries
@@ -752,14 +760,17 @@ class ZRevStrategy(BaseStrategy):
         try:
             import MetaTrader5 as mt5
             mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
-            for p in (mt5.positions_get(symbol=mt5_symbol) or ()):
+            poss = mt5.positions_get(symbol=mt5_symbol)
+            if poss is None:                  # MT5 not ready yet -> retry next poll
+                return                        # (do NOT mark reconciled / emit FLAT and close a live leg)
+            for p in poss:
                 if p.magic == self.magic:
                     self._prev_action = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
                     logger.info(f"[{self.name}] reconciled to existing {self._prev_action}")
                     break
+            self._reconciled = True           # only once MT5 actually responded
         except Exception as e:
-            logger.warning(f"[{self.name}] reconcile skipped: {e}")
-        self._reconciled = True
+            logger.warning(f"[{self.name}] reconcile retry (MT5 error): {e}")
 
 
 class MeanReversionStrategy(BaseStrategy):

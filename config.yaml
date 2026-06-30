@@ -173,6 +173,22 @@ live:
                             #   (audit: PF 2.19->2.23, DD -$314->-$301, MC ->1.46; SL lebih dekat dari channel)
         history_bars: 30000 # M1 ditarik per poll (cukup utk EMA100 + channel + margin)
 
+    - name: zrev_xau_4h     # Gold edge KEDUA: zrev di TF 4H (tangkap tren besar/lambat)
+      type: zrev            #   2026-06-30 audit (xau_diversify.py): OOS PF 3.59, MC 1.71, net +$2500,
+      symbol: XAUUSD        #   ~0.5 trade/mgg. Korelasi 0.84 ke 1H (bukan pengurangan risiko, aliran ke-2).
+      lot: 0.01             # FIXED 0.01 (no dynamic lot) - jaga margin di exposure gold dobel
+      magic: 920624         # UNIQUE (920622=zrev 1H, 920621=vision, 920617=US100)
+      params:
+        timeframe: "4h"     # channel/EMA dihitung di bar 4 jam
+        entry_n: 20
+        exit_n: 20
+        use_sl: true
+        trend_filter: true
+        trend_ema: 50       # EMA50 di 4H (~8 hari) - cocok dgn backtest PF 3.59
+        daily_filter: true
+        daily_sma: 50
+        history_bars: 40000 # ~666 jam = ~166 bar 4H (cukup utk EMA50 + channel + margin)
+
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
     # entry_z 2.5 < stop_z 3.0 berarti SETIAP sinyal dengan |z| >= 3.0 punya SL di sisi
