@@ -212,42 +212,38 @@ live:
     #     max_hold_hours: 48
     #     history_bars: 6000
 
-    # vision_smc_xau: UNVERIFIED by construction (audit 2026-06-28). Discretionary LLM —
-    # tak bisa di-backtest (tak ada deret sinyal historis yang reproducible). Biarkan
-    # jalan di DEMO sbg forward-test; JANGAN aktifkan utk uang RIIL sebelum ada track
-    # record live yang cukup. Bukan "REPRODUCED".
-    - name: vision_smc_xau   # AI-vision gold, MULTI-TIMEFRAME SMC (H1+M15+M5) — the single vision base
-      type: vision
-      symbol: XAUUSD
-      lot: 0.01
-      magic: 920621          # UNIQUE (920617=US100, 920618=orb_xau, 920619=vision_xau, 920620=orb_xau_asia)
-      params:
-        interval_minutes: 30      # Claude called at most once / 30 min (3 images/call ~ 3x tokens of single-TF)
-        active_windows_utc: ["00:00-22:00"]   # Asia+London+NY = 08:00-06:00 WITA
-        capture_mode: tradingview            # 2026-06-28: real TradingView charts (headless), not mt5 render
-        tv_symbol: "OANDA:XAUUSD"            # spot gold feed; closest to broker. Dynamic offset corrects the rest.
-        timeframes: ["H4", "M15", "M5"]       # v2: H4 = macro bias (anti counter-trend), M5 = entry+SL/TP
-        chart_bars: 200           # bars rendered per timeframe image
-        model: "claude-opus-4-8"
-        min_confidence: 65        # entry only if Claude conf >= this
-        min_reverse_confidence: 75 # flipping an OPEN trade needs a higher bar (anti flip-flop)
-        min_rr: 2.0               # v2: A+ setups earn >= 1:2 (was 1.5)
-        price_offset: 0.0         # static fallback only; TV mode uses DYNAMIC offset = broker_price - chart_price
-        max_offset_frac: 0.01     # reject (don't apply) a dynamic offset > 1% of price (guards a mis-read chart_price)
-        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
-        # Lock-profit reversal (rule-based, no Claude, every poll): once in profit
-        # >= 0.5R, close the moment price breaks the swing of the last 3 completed M5
-        # bars against the trade. Banks profit fast; zero extra tokens.
-        lock_profit_reversal: true
-        lock_min_profit_r: 0.5
-        reversal_tf: M5
-        reversal_lookback: 3
-        archive_all_frames: false
+    # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
+    # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
+    # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
+    # REPLACED by the SHADOW ADVISOR (see `advisor:` block below + pipeline/live/advisor.py):
+    # LLM no longer DECIDES — it captures the chart + macro/micro context at each REAL brain
+    # entry and logs a CONFIRM/CAUTION verdict ALONGSIDE the outcome, blocking nothing. After
+    # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
+    # let it filter. Honest forward-test, zero risk to the validated edge.
 
 # AI-vision audit trail (used by pipeline/vision/journal.py)
 vision:
   journal_path: "vision_journal.jsonl"
   archive_dir: "_DOC/vision"
+
+# SHADOW ADVISOR (pipeline/live/advisor.py) — separate read-only process. On each NEW brain
+# entry (matched by magic) it captures the chart, asks Claude for a macro/micro CONFIRM/CAUTION
+# read, and logs it next to the trade. It NEVER places/blocks/sizes an order — pure insight.
+# Run via START_ADVISOR.bat. Evaluate later with research/advisor_eval.py.
+advisor:
+  enabled: true
+  poll_seconds: 15              # how often to scan MT5 for a new position (read-only)
+  model: "claude-opus-4-8"
+  max_tokens: 700
+  timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
+  prompt_file: "pipeline/vision/prompt_advisor.md"
+  journal_path: "advisor_journal.jsonl"
+  archive_dir: "_DOC/advisor"
+  # which live magics to watch -> canonical symbol + its TradingView feed for capture
+  watch:
+    - {magic: 920622, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau (1H)
+    - {magic: 920624, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau_4h
+    - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
 
 audit:
   interval_minutes: 15       # continuous worker re-check cadence
