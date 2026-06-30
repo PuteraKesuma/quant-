@@ -580,6 +580,10 @@ class ZRevStrategy(BaseStrategy):
         self.lot_max = float(p.get("lot_max", self.lot))
         self.lot_z_lo = float(p.get("lot_z_lo", 1.0))
         self.lot_z_hi = float(p.get("lot_z_hi", 3.0))
+        # Capital-aware lot cap: the effective lot_max = min(lot_max, balance *
+        # lot_per_balance). So a small account never over-leverages -- e.g. 0.00005
+        # gives ~0.02 max at $400, scaling up to the 0.03 ceiling at ~$600+. 0 = off.
+        self.lot_per_balance = float(p.get("lot_per_balance", 0.0))
         # Optional TIGHTER broker-SL backstop: min(channel, entry -/+ mult*ATR). Audited
         # marginal gain (PF 2.19->2.23, DD/MC better) AND a closer per-trade stop than the
         # wide channel level. 0 = off (use channel level only). Channel break stays the
@@ -662,6 +666,15 @@ class ZRevStrategy(BaseStrategy):
         lot = self._dynamic_lot(completed, forming, action) if action in ("BUY", "SELL") else self.lot
         return self._emit(action, sl, ts, lot)
 
+    def _balance(self) -> float | None:
+        """Account balance from MT5 (for capital-aware lot sizing). None on error."""
+        try:
+            import MetaTrader5 as mt5
+            ai = mt5.account_info()
+            return float(ai.balance) if ai else None
+        except Exception:
+            return None
+
     def _atr_tighten(self, completed, forming, action: str, sl: float) -> float:
         """Tighten the broker-SL backstop to the closer of the channel level and
         entry -/+ atr_stop_mult * ATR(14). Fail-safe -> original channel sl on error."""
@@ -693,10 +706,15 @@ class ZRevStrategy(BaseStrategy):
                 return self.lot_min
             z = (float(forming["close"]) - ma) / sd
             z_dir = z if action == "BUY" else -z
+            eff_max = self.lot_max
+            if self.lot_per_balance > 0:                 # capital-aware cap
+                bal = self._balance()
+                if bal:
+                    eff_max = max(self.lot_min, min(self.lot_max, bal * self.lot_per_balance))
             frac = max(0.0, min(1.0, (z_dir - self.lot_z_lo) / max(self.lot_z_hi - self.lot_z_lo, 1e-9)))
-            raw = self.lot_min + frac * (self.lot_max - self.lot_min)
-            lot = max(self.lot_min, min(self.lot_max, int(round(raw / 0.01 - 1e-9)) * 0.01))
-            logger.info(f"[{self.name}] dynamic lot: z_dir={z_dir:.2f} -> lot={lot:.2f}")
+            raw = self.lot_min + frac * (eff_max - self.lot_min)
+            lot = max(self.lot_min, min(eff_max, int(round(raw / 0.01 - 1e-9)) * 0.01))
+            logger.info(f"[{self.name}] dynamic lot: z_dir={z_dir:.2f} cap={eff_max:.3f} -> lot={lot:.2f}")
             return round(lot, 2)
         except Exception as e:
             logger.warning(f"[{self.name}] dynamic_lot fallback: {e}")
