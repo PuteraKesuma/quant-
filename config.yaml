@@ -171,7 +171,7 @@ live:
         lot_z_hi: 3.0       # z_dir di mana lot capai lot_max
         atr_stop_mult: 3.0  # 2026-06-30 TEST: broker SL backstop lebih ketat = entry +/- 3*ATR
                             #   (audit: PF 2.19->2.23, DD -$314->-$301, MC ->1.46; SL lebih dekat dari channel)
-        history_bars: 30000 # M1 ditarik per poll (cukup utk EMA100 + channel + margin)
+        history_bars: 15000 # ~250 jam = ~250 bar 1H (cukup utk EMA100+channel; kecil biar /signals cepat)
 
     - name: zrev_xau_4h     # Gold edge KEDUA: zrev di TF 4H (tangkap tren besar/lambat)
       type: zrev            #   2026-06-30 audit (xau_diversify.py): OOS PF 3.59, MC 1.71, net +$2500,
@@ -187,7 +187,7 @@ live:
         trend_ema: 50       # EMA50 di 4H (~8 hari) - cocok dgn backtest PF 3.59
         daily_filter: true
         daily_sma: 50
-        history_bars: 40000 # ~666 jam = ~166 bar 4H (cukup utk EMA50 + channel + margin)
+        history_bars: 15000 # ~250 jam = ~62 bar 4H (cukup utk EMA50+channel; kecil biar /signals cepat)
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
