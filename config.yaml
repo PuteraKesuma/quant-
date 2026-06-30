@@ -169,6 +169,8 @@ live:
         lot_max: 0.03       #   (rule z-score, BUKAN ML — ablation: 1 fitur saja yang prediktif)
         lot_z_lo: 1.0       # z_dir di mana lot mulai naik dari lot_min
         lot_z_hi: 3.0       # z_dir di mana lot capai lot_max
+        atr_stop_mult: 3.0  # 2026-06-30 TEST: broker SL backstop lebih ketat = entry +/- 3*ATR
+                            #   (audit: PF 2.19->2.23, DD -$314->-$301, MC ->1.46; SL lebih dekat dari channel)
         history_bars: 30000 # M1 ditarik per poll (cukup utk EMA100 + channel + margin)
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
