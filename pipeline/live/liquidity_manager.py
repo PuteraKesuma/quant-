@@ -47,6 +47,8 @@ class LiquidityManager:
         self.dry_run = bool(p.get("dry_run", True))
         self.min_move = float(p.get("min_reprice_move", 0.3))   # only MODIFY if band moved > this
         self.data = DataProvider(cfg)
+        self._last_long = None     # last flat_up SUPPORT level = resting BUY_LIMIT price (Pine lastLongLimit)
+        self._last_short = None    # last flat_dn RESISTANCE level = resting SELL_LIMIT price
 
     # ---------------------------------------------------------------- signal
     def _supertrend(self, h):
@@ -75,7 +77,7 @@ class LiquidityManager:
             elif t == 1 and cc[i] < up1:
                 t = -1
             trend[i] = t
-        return float(up[-1]), float(dn[-1]), int(trend[-1])
+        return up, dn, trend       # full arrays (caller checks flatness of the last 3 bars)
 
     def _band_trend(self):
         df = self.data.recent_bars(self.symbol, self.history_bars)
@@ -88,7 +90,11 @@ class LiquidityManager:
             return None
         now = pd.Timestamp.utcnow(); cb = now.floor(self.timeframe)
         completed = h.iloc[:-1] if (h.index[-1] == cb and len(h) > 1) else h
-        return self._supertrend(completed)
+        up, dn, trend = self._supertrend(completed)
+        tr = int(trend[-1])
+        flat_up = tr == 1 and up[-1] == up[-2] == up[-3]     # support flat 3 bars (Pine flat_up)
+        flat_dn = tr == -1 and dn[-1] == dn[-2] == dn[-3]    # resistance flat 3 bars (flat_dn)
+        return float(up[-1]), float(dn[-1]), tr, flat_up, flat_dn
 
     # ---------------------------------------------------------------- MT5 ops
     def _send(self, mt5, req, what):
@@ -125,7 +131,19 @@ class LiquidityManager:
         bt = self._band_trend()
         if bt is None:
             return
-        up_band, dn_band, trend = bt
+        up_band, dn_band, trend, flat_up, flat_dn = bt
+        # Track the resting-limit level exactly like the Pine (lastLongLimit/lastShortLimit): refresh
+        # ONLY on a FLAT band. BUY rests at the last flat SUPPORT (up), SELL at the last flat
+        # RESISTANCE (dn). Clear the opposite side on the current trend. None => no limit yet.
+        if trend == 1:
+            self._last_short = None
+            if flat_up:
+                self._last_long = up_band
+        elif trend == -1:
+            self._last_long = None
+            if flat_dn:
+                self._last_short = dn_band
+
         poss = mt5.positions_get(symbol=self.mt5_symbol)
         pends = mt5.orders_get(symbol=self.mt5_symbol)
         if poss is None or pends is None:            # MT5 not ready -> skip
@@ -138,16 +156,16 @@ class LiquidityManager:
                 self._cancel(mt5, o.ticket)
             return
 
-        # flat -> resting limit at the NEAR band (user choice 2026-07-03: the band closest to
-        # price = a shallow pullback, not the far trailing band). Uptrend BUY at the upper/resist
-        # band (dn), downtrend SELL at the lower/support band (up).
-        if trend == 1:
-            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = dn_band; sl = dn_band - self.sl_d; tp = dn_band + self.tp_d
-        elif trend == -1 and self.both_sides:
-            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = up_band; sl = up_band + self.sl_d; tp = up_band - self.tp_d
+        # rest the limit at the LAST FLAT band level (Pine longPrice=up / shortPrice=dn on flat).
+        if trend == 1 and self._last_long is not None:
+            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = self._last_long
+            sl = price - self.sl_d; tp = price + self.tp_d
+        elif trend == -1 and self.both_sides and self._last_short is not None:
+            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = self._last_short
+            sl = price + self.sl_d; tp = price - self.tp_d
         else:
             for o in my_pend:
-                self._cancel(mt5, o.ticket)
+                self._cancel(mt5, o.ticket)          # no flat level yet -> no resting limit
             return
 
         # guard: limit must be on the correct side of the market by >= stops_level
