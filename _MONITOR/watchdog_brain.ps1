@@ -16,6 +16,7 @@ $VisionJrn = "C:\Quant\vision_journal.jsonl"
 $Bat       = "C:\Quant\START_TRADING.bat"
 $AdvBat    = "C:\Quant\START_ADVISOR.bat"
 $AdvJrn    = "C:\Quant\advisor_journal.jsonl"
+$LiqBat    = "C:\Quant\START_LIQMGR.bat"
 $Mt5Exe    = "C:\Program Files\MetaTrader 5\terminal64.exe"
 $HealthUrl = "http://127.0.0.1:8000/health"
 
@@ -24,6 +25,7 @@ $FailsToRestart     = 3    # gagal beruntun sebelum dianggap DOWN + restart
 $HeartbeatMin       = 30   # menit antar baris "sehat" rutin di jurnal
 $RestartCooldownMin = 3    # jeda minimum antar percobaan restart
 $AdvCooldownMin     = 3    # jeda minimum antar relaunch advisor (non-kritis, insight-only)
+$LiqCooldownMin     = 3    # jeda minimum antar relaunch liquidity manager (pasang order limit)
 
 function NowUtc { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") }
 function J($emoji, $msg) {
@@ -36,6 +38,11 @@ function AdvisorUp {
          Where-Object { $_.CommandLine -match "pipeline\.live\.advisor" }
     return [bool]$p
 }
+function LiqMgrUp {
+    $p = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+         Where-Object { $_.CommandLine -match "pipeline\.live\.liquidity_manager" }
+    return [bool]$p
+}
 
 $fail        = 0
 $down        = $false
@@ -45,6 +52,9 @@ $restarts    = 0
 $advRestarts    = 0
 $lastAdvRestart = [datetime]::MinValue
 $advFail        = 0
+$liqRestarts    = 0
+$lastLiqRestart = [datetime]::MinValue
+$liqFail        = 0
 
 J "==>" "Watchdog START. Cek tiap $Interval dtk; restart setelah $FailsToRestart gagal beruntun."
 
@@ -129,6 +139,18 @@ while ($true) {
             $advRestarts++; $lastAdvRestart = Get-Date; $advFail = 0
             J "ADV" "Shadow Advisor tidak jalan (2 cek) - relaunch #$advRestarts via START_ADVISOR.bat ..."
             Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $AdvBat -WorkingDirectory "C:\Quant"
+        }
+    }
+
+    # --- Liquidity Manager (pasang order limit asli, magic 920625): relaunch kalau hilang ---
+    if (LiqMgrUp) {
+        $liqFail = 0
+    } else {
+        $liqFail++
+        if ($liqFail -ge 2 -and ((Get-Date) - $lastLiqRestart).TotalMinutes -ge $LiqCooldownMin) {
+            $liqRestarts++; $lastLiqRestart = Get-Date; $liqFail = 0
+            J "LIQ" "Liquidity Manager tidak jalan (2 cek) - relaunch #$liqRestarts via START_LIQMGR.bat ..."
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $LiqBat -WorkingDirectory "C:\Quant"
         }
     }
 
