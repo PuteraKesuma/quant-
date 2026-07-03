@@ -140,7 +140,7 @@ live:
       lot: 0.01
       magic: 920625         # UNIQUE (920617=US100, 920622/920624=Z archived, 920621=vision, 920623=mr)
       params:
-        timeframe: "1h"     # Supertrend on 1H (validated TF: PF 2.08 long / 1.83 both @ $13 stop)
+        timeframe: "15min"  # 2026-07-03: match developer's chart TF (was 1h -> band too far below, missed fills)
         st_period: 21       # Wilder ATR period
         st_mult: 5.5        # band = src -/+ 5.5*ATR (the supertrend support/resistance 'limit')
         tp_dollars: 26.0    # TP = band +/- $26  (broker-matched: XAU 0.01 lot -> $1 per $1 move)
