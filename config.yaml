@@ -169,7 +169,9 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
-      enabled: false        # ARCHIVED 2026-07-03 by user choice (reversible: set true + restart brain). See memory.
+      enabled: true         # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) — the
+                            #   FULL book Z+NAS+LIQ (OOS-PF 1.87, net +$4685) needs its main engine back;
+                            #   NAS+LIQ alone was the weakest combo (OOS 1.56, negative 2022). User chose FULL.
       type: zrev            #   2026-06-29 audit (entry20/exit20 = always-in): IS PF 1.09, OOS 1.58,
                             #   MC 5th-pct 1.18, 5/6 thn hijau, 0% order invalid. ~4 trade/minggu,
                             #   hold ~1 hari, SELALU ada posisi (flip ~tiap 1.8 hari). maxDD -$501 @0.01

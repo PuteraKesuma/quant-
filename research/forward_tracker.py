@@ -25,7 +25,8 @@ from zrev_dual_trend import sim_dual, daily_map
 from portfolio_audit import nas_dollars
 
 MARKER = Path(r"C:\Quant\_MONITOR\forward_test.json")
-MAGICS = {920617, 920622, 920624}          # orb30_nas, zrev_xau, zrev_xau_4h
+MAGICS = {920617, 920622, 920625}          # orb30_nas, zrev_xau, liquidity_limit (FULL book 2026-07-03)
+BOOK_CSV = Path(r"C:\Quant\research\book_weekly.csv")   # weekly $ dist of the deployed book
 HORIZON_W = 13                              # ~3 months
 DD_LIMIT = 0.30                            # hard-stop drawdown criterion
 OUT = r"C:\Users\ADMINI~1\AppData\Local\Temp\1\claude\C--Users-Administrator\91e0ccf1-c993-48f2-8268-f1678ad108cb\scratchpad\forward_tracker.png"
@@ -53,11 +54,14 @@ def forward_trades(m, start_epoch):
 
 
 def cone(start_balance):
-    dmap = daily_map(50)
-    z = sim_dual(dmap=dmap, use_daily=True)
-    zser = pd.Series([t[3] for t in z], index=pd.DatetimeIndex([t[1] for t in z]))
-    book = pd.concat([zser, nas_dollars()]).sort_index()
-    wk = book.resample("W").sum()
+    if BOOK_CSV.exists():                          # weekly dist of the DEPLOYED book (Z+NAS+LIQ)
+        wk = pd.read_csv(BOOK_CSV, index_col=0, parse_dates=True)["pnl"]
+    else:                                          # fallback: Z+NAS sim
+        dmap = daily_map(50)
+        z = sim_dual(dmap=dmap, use_daily=True)
+        zser = pd.Series([t[3] for t in z], index=pd.DatetimeIndex([t[1] for t in z]))
+        book = pd.concat([zser, nas_dollars()]).sort_index()
+        wk = book.resample("W").sum()
     rng = np.random.default_rng(7)
     sims = np.array([start_balance + np.cumsum(rng.choice(wk.values, HORIZON_W, replace=True))
                      for _ in range(4000)])

@@ -1,6 +1,11 @@
 # Forward test — proving the live edge before real money
 
-**Started:** 2026-07-01 (demo, FBS-Demo). Horizon: **~2-3 months (13 weeks)**.
+**RESTARTED: 2026-07-03** (demo, FBS-Demo). Horizon: **~3 months (13 weeks)** from restart.
+The 2026-07-01 test was voided: the book changed (Z archived, liquidity added, then the FULL
+book chosen). The deployed book is now **Z (zrev 1H) + orb30_nas + liquidity_limit (15min)**
+per `research/portfolio_best.py` (FULL book OOS-PF 1.87, net +$4685, 2022 ~breakeven; the
+NAS+LIQ-only book was the weakest: OOS 1.56, negative 2022). Cone rebuilt from
+`research/book_weekly.csv` (weekly $ dist of this exact book).
 **Capital for eventual go-live:** $400, confirmed RISK CAPITAL (affordable to lose 100%).
 
 ## Why
