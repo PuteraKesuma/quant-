@@ -255,7 +255,7 @@ vision:
 advisor:
   enabled: true
   poll_seconds: 15              # how often to scan MT5 for a new position (read-only)
-  model: "claude-opus-4-8"
+  model: "claude-sonnet-4-6"    # 2026-07-03: Opus -> Sonnet (5x cheaper) after $4 balance concern
   max_tokens: 700
   timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
   prompt_file: "pipeline/vision/prompt_advisor.md"

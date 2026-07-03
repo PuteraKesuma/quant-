@@ -47,8 +47,6 @@ class LiquidityManager:
         self.dry_run = bool(p.get("dry_run", True))
         self.min_move = float(p.get("min_reprice_move", 0.3))   # only MODIFY if band moved > this
         self.data = DataProvider(cfg)
-        self._last_long = None     # last flat_up SUPPORT level = resting BUY_LIMIT price (Pine lastLongLimit)
-        self._last_short = None    # last flat_dn RESISTANCE level = resting SELL_LIMIT price
 
     # ---------------------------------------------------------------- signal
     def _supertrend(self, h):
@@ -92,9 +90,23 @@ class LiquidityManager:
         completed = h.iloc[:-1] if (h.index[-1] == cb and len(h) > 1) else h
         up, dn, trend = self._supertrend(completed)
         tr = int(trend[-1])
-        flat_up = tr == 1 and up[-1] == up[-2] == up[-3]     # support flat 3 bars (Pine flat_up)
-        flat_dn = tr == -1 and dn[-1] == dn[-2] == dn[-3]    # resistance flat 3 bars (flat_dn)
-        return float(up[-1]), float(dn[-1]), tr, flat_up, flat_dn
+        # The resting limit persists at the LAST FLAT band level in the CURRENT trend segment
+        # (Pine lastLongLimit/lastShortLimit). Scan back from the end, stop at the trend change,
+        # take the newest bar where the band was flat 3 bars. Restart-robust (rebuilt from history).
+        last_long = last_short = None
+        if tr == 1:
+            for i in range(len(up) - 1, 1, -1):
+                if trend[i] != 1:
+                    break
+                if up[i] == up[i - 1] == up[i - 2]:
+                    last_long = float(up[i]); break
+        elif tr == -1:
+            for i in range(len(dn) - 1, 1, -1):
+                if trend[i] != -1:
+                    break
+                if dn[i] == dn[i - 1] == dn[i - 2]:
+                    last_short = float(dn[i]); break
+        return float(up[-1]), float(dn[-1]), tr, last_long, last_short
 
     # ---------------------------------------------------------------- MT5 ops
     def _send(self, mt5, req, what):
@@ -131,19 +143,7 @@ class LiquidityManager:
         bt = self._band_trend()
         if bt is None:
             return
-        up_band, dn_band, trend, flat_up, flat_dn = bt
-        # Track the resting-limit level exactly like the Pine (lastLongLimit/lastShortLimit): refresh
-        # ONLY on a FLAT band. BUY rests at the last flat SUPPORT (up), SELL at the last flat
-        # RESISTANCE (dn). Clear the opposite side on the current trend. None => no limit yet.
-        if trend == 1:
-            self._last_short = None
-            if flat_up:
-                self._last_long = up_band
-        elif trend == -1:
-            self._last_long = None
-            if flat_dn:
-                self._last_short = dn_band
-
+        up_band, dn_band, trend, last_long, last_short = bt   # last_long/short = last FLAT band level
         poss = mt5.positions_get(symbol=self.mt5_symbol)
         pends = mt5.orders_get(symbol=self.mt5_symbol)
         if poss is None or pends is None:            # MT5 not ready -> skip
@@ -157,15 +157,15 @@ class LiquidityManager:
             return
 
         # rest the limit at the LAST FLAT band level (Pine longPrice=up / shortPrice=dn on flat).
-        if trend == 1 and self._last_long is not None:
-            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = self._last_long
+        if trend == 1 and last_long is not None:
+            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = last_long
             sl = price - self.sl_d; tp = price + self.tp_d
-        elif trend == -1 and self.both_sides and self._last_short is not None:
-            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = self._last_short
+        elif trend == -1 and self.both_sides and last_short is not None:
+            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = last_short
             sl = price + self.sl_d; tp = price - self.tp_d
         else:
             for o in my_pend:
-                self._cancel(mt5, o.ticket)          # no flat level yet -> no resting limit
+                self._cancel(mt5, o.ticket)          # no flat level in this trend -> no resting limit
             return
 
         # guard: limit must be on the correct side of the market by >= stops_level
