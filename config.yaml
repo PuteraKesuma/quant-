@@ -133,8 +133,9 @@ live:
         session_end_utc: "20:00"  # time-exit if neither SL/TP hit
 
     - name: liquidity_limit_strategy   # Liquidity Limit — Supertrend band 'limit' entries (BOTH sides)
-      enabled: true         # 2026-07-03 NEW (replaces Z per user). DEMO test. Claude confirms via advisor.
-      type: liqlimit
+      enabled: false        # 2026-07-03: EA market-slot OFF. The liquidity_manager (brain-side) owns the
+                            #   REAL pending LIMIT order via MT5 (EA is market-only + never modified).
+      type: liqlimit        #   See pipeline/live/liquidity_manager.py. Claude confirms fills via advisor.
       symbol: XAUUSD
       lot: 0.01
       magic: 920625         # UNIQUE (920617=US100, 920622/920624=Z archived, 920621=vision, 920623=mr)
@@ -146,6 +147,10 @@ live:
         sl_dollars: 13.0    # SL = band -/+ $13  (2.4x ATR; tradeable = 3.7% of $349)
         both_sides: true    # BUY in uptrend (pullback to support) + SELL in downtrend (bounce to resistance)
         history_bars: 15000 # ~250 1H bars (plenty for ATR21 supertrend warmup)
+        # --- liquidity_manager: REAL pending LIMIT order at the band (via MT5, EA untouched) ---
+        dry_run: false      # 2026-07-03 LIVE on demo: places REAL pending limit orders. (true = log-only.)
+        manager_poll_seconds: 10  # re-price cadence (the limit follows the band)
+        min_reprice_move: 0.3     # only MODIFY the resting limit if the band moved > this ($)
 
     # DISABLED 2026-06-27 (lean-down): XAU-NY ORB berkorelasi dgn Z (dua-duanya gold) -> menambah
     # drawdown (DD -$270 -> -$427 saat aktif) dgn tambahan return tipis. Gold cukup Z + vision.
