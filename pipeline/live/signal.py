@@ -898,6 +898,161 @@ class MeanReversionStrategy(BaseStrategy):
             logger.warning(f"[{self.name}] reconcile skipped: {e}")
 
 
+class LiquidityLimitStrategy(BaseStrategy):
+    """Liquidity Limit Strategy — Supertrend band 'limit' entries (validated XAU candidate,
+    research/supertrend_long_xau.py + supertrend_validate13.py, broker-matched $13/$26 stop).
+
+    In an UPTREND it holds a BUY at the continuously-updated Supertrend SUPPORT band and enters
+    when the forming bar pulls back to it (= the buy-limit fill); mirror SELL at the RESISTANCE
+    band in a DOWNTREND. ONE position at a time: while a position is open, new entry signals are
+    ignored (only the exit is watched). Fixed RR from the band level: TP = band +/- tp_dollars,
+    SL = band -/+ sl_dollars. Exit is SIGNAL-DRIVEN (the slot emits FLAT when the forming bar
+    touches TP or SL) with the same prices set as a broker backstop for server downtime.
+
+    DESIRED-STATE: the EA has no pending-order type, so the 'limit' is realized as a MARKET entry
+    the moment price reaches the band (same economic effect). Idempotent via a per-slot counter ->
+    signal_id changes only when the desired position changes. Claude confirmation runs ASYNC via
+    the shadow advisor (add this magic to advisor.watch); it annotates every entry, never blocks.
+    Restart-safe: reconciles any existing MT5 position (and its broker SL/TP) on the first poll.
+    """
+
+    def __init__(self, spec: dict, cfg: dict, data: DataProvider):
+        super().__init__(spec, cfg, data)
+        p = spec.get("params", {})
+        self.timeframe = str(p.get("timeframe", "1h"))
+        self.st_period = int(p.get("st_period", 21))      # Wilder ATR period for Supertrend
+        self.st_mult = float(p.get("st_mult", 5.5))       # band = src -/+ mult*ATR
+        self.tp_dollars = float(p.get("tp_dollars", 26.0))  # TP distance in PRICE units ($ gold move)
+        self.sl_dollars = float(p.get("sl_dollars", 13.0))  # SL distance ($13 @0.01 lot; broker-matched)
+        self.both_sides = bool(p.get("both_sides", True))
+        self.history_bars = int(p.get("history_bars", 15000))
+        self._prev_action = "FLAT"
+        self._counter = 0
+        self._reconciled = False
+        self._tp_lvl = 0.0
+        self._sl_lvl = 0.0
+
+    def evaluate(self) -> SignalResponse:
+        now = pd.Timestamp.utcnow()
+        ts = now.isoformat()
+        self._reconcile_position()
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        h = self._resample(df)
+        min_bars = self.st_period + 10
+        if len(h) < min_bars + 1:
+            return self._emit("FLAT", 0.0, 0.0, ts)              # warming up
+        cur_bar = now.floor(self.timeframe)
+        if h.index[-1] == cur_bar and len(h) > 1:
+            completed, forming = h.iloc[:-1], h.iloc[-1]
+        else:
+            completed, forming = h, h.iloc[-1]
+        if len(completed) < min_bars:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
+        up_band, dn_band, trend = self._supertrend(completed)
+        hi, lo = float(forming["high"]), float(forming["low"])
+        prev = self._prev_action
+
+        if prev == "BUY":                                        # hold long -> exit on TP/SL touch
+            hit = (self._sl_lvl > 0 and lo <= self._sl_lvl) or (self._tp_lvl > 0 and hi >= self._tp_lvl)
+            action = "FLAT" if hit else "BUY"
+        elif prev == "SELL":                                     # hold short
+            hit = (self._sl_lvl > 0 and hi >= self._sl_lvl) or (self._tp_lvl > 0 and lo <= self._tp_lvl)
+            action = "FLAT" if hit else "SELL"
+        else:                                                    # flat -> band-limit fill
+            if trend == 1 and lo <= up_band:
+                action = "BUY"
+            elif trend == -1 and self.both_sides and hi >= dn_band:
+                action = "SELL"
+            else:
+                action = "FLAT"
+
+        if action == "BUY" and prev != "BUY":                    # new entry -> lock fixed TP/SL
+            self._sl_lvl = up_band - self.sl_dollars
+            self._tp_lvl = up_band + self.tp_dollars
+        elif action == "SELL" and prev != "SELL":
+            self._sl_lvl = dn_band + self.sl_dollars
+            self._tp_lvl = dn_band - self.tp_dollars
+
+        sl = self._sl_lvl if action in ("BUY", "SELL") else 0.0
+        tp = self._tp_lvl if action in ("BUY", "SELL") else 0.0
+        return self._emit(action, sl, tp, ts)
+
+    def _supertrend(self, h) -> tuple[float, float, int]:
+        """(up_band, dn_band, trend) for the LAST completed bar. Ports the Wilder-ATR
+        Supertrend in research/supertrend_long_xau.supertrend (band lock + flip)."""
+        import numpy as np
+        hh = h["high"].values; ll = h["low"].values; cc = h["close"].values
+        n = self.st_period
+        pc = np.roll(cc, 1); pc[0] = cc[0]
+        tr = np.maximum(hh - ll, np.maximum(np.abs(hh - pc), np.abs(ll - pc)))
+        atr = np.full(len(cc), np.nan)
+        if len(cc) >= n:
+            atr[n - 1] = tr[:n].mean()
+            for i in range(n, len(cc)):
+                atr[i] = (atr[i - 1] * (n - 1) + tr[i]) / n
+        src = (hh + ll) / 2.0
+        up = np.full(len(cc), np.nan); dn = np.full(len(cc), np.nan); trend = np.ones(len(cc), int)
+        for i in range(len(cc)):
+            if not np.isfinite(atr[i]):
+                up[i] = src[i]; dn[i] = src[i]; trend[i] = 1; continue
+            bu = src[i] - self.st_mult * atr[i]; bd = src[i] + self.st_mult * atr[i]
+            up1 = up[i - 1] if i > 0 and np.isfinite(up[i - 1]) else bu
+            dn1 = dn[i - 1] if i > 0 and np.isfinite(dn[i - 1]) else bd
+            up[i] = max(bu, up1) if (i > 0 and cc[i - 1] > up1) else bu
+            dn[i] = min(bd, dn1) if (i > 0 and cc[i - 1] < dn1) else bd
+            t = trend[i - 1] if i > 0 else 1
+            if t == -1 and cc[i] > dn1:
+                t = 1
+            elif t == 1 and cc[i] < up1:
+                t = -1
+            trend[i] = t
+        return float(up[-1]), float(dn[-1]), int(trend[-1])
+
+    def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:
+        if action != self._prev_action:
+            self._counter += 1
+            self._prev_action = action
+        sig_id = f"{self.symbol}-{self.name}-LIQ-{self._counter}"
+        if action == "FLAT":
+            return flat(self.name, self.symbol, self.magic, sig_id, ts)
+        logger.info(f"[{self.name}] LIQ {action} sl={round(sl, 2)} tp={round(tp, 2)} lot={self.lot}")
+        return SignalResponse(
+            strategy=self.name, symbol=self.symbol, action=action,
+            sl=round(sl, 5), tp=round(tp, 5), lot=self.lot,
+            magic=self.magic, signal_id=sig_id, ts=ts,
+        )
+
+    def _resample(self, df):
+        return (df.resample(self.timeframe)
+                  .agg({"open": "first", "high": "max", "low": "min",
+                        "close": "last", "volume": "sum"})
+                  .dropna(subset=["open"]))
+
+    def _reconcile_position(self) -> None:
+        """Adopt any existing MT5 position (and its broker SL/TP) under this magic on the
+        first poll, so a restart never force-closes a live leg or loses the exit levels."""
+        if self._reconciled:
+            return
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            poss = mt5.positions_get(symbol=mt5_symbol)
+            if poss is None:                  # MT5 not ready -> retry next poll
+                return
+            for p in poss:
+                if p.magic == self.magic:
+                    self._prev_action = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
+                    self._sl_lvl = float(p.sl); self._tp_lvl = float(p.tp)
+                    logger.info(f"[{self.name}] reconciled to {self._prev_action} sl={p.sl} tp={p.tp}")
+                    break
+            self._reconciled = True
+        except Exception as e:
+            logger.warning(f"[{self.name}] reconcile retry: {e}")
+
+
 # register new model types here; config `type:` selects one
 STRATEGY_TYPES = {
     "dummy": DummyStrategy,
@@ -905,6 +1060,7 @@ STRATEGY_TYPES = {
     "vision": VisionStrategy,
     "zrev": ZRevStrategy,        # Z Strategy (Donchian stop-and-reverse)
     "mr": MeanReversionStrategy, # Mean-reversion z-score fade (diversifier)
+    "liqlimit": LiquidityLimitStrategy,  # Liquidity Limit (Supertrend band 'limit' entries)
 }
 
 

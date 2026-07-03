@@ -132,6 +132,21 @@ live:
         range_filter: false  # dropped: trend filter already does the heavy lifting; RF added ~nothing
         session_end_utc: "20:00"  # time-exit if neither SL/TP hit
 
+    - name: liquidity_limit_strategy   # Liquidity Limit — Supertrend band 'limit' entries (BOTH sides)
+      enabled: true         # 2026-07-03 NEW (replaces Z per user). DEMO test. Claude confirms via advisor.
+      type: liqlimit
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920625         # UNIQUE (920617=US100, 920622/920624=Z archived, 920621=vision, 920623=mr)
+      params:
+        timeframe: "1h"     # Supertrend on 1H (validated TF: PF 2.08 long / 1.83 both @ $13 stop)
+        st_period: 21       # Wilder ATR period
+        st_mult: 5.5        # band = src -/+ 5.5*ATR (the supertrend support/resistance 'limit')
+        tp_dollars: 26.0    # TP = band +/- $26  (broker-matched: XAU 0.01 lot -> $1 per $1 move)
+        sl_dollars: 13.0    # SL = band -/+ $13  (2.4x ATR; tradeable = 3.7% of $349)
+        both_sides: true    # BUY in uptrend (pullback to support) + SELL in downtrend (bounce to resistance)
+        history_bars: 15000 # ~250 1H bars (plenty for ATR21 supertrend warmup)
+
     # DISABLED 2026-06-27 (lean-down): XAU-NY ORB berkorelasi dgn Z (dua-duanya gold) -> menambah
     # drawdown (DD -$270 -> -$427 saat aktif) dgn tambahan return tipis. Gold cukup Z + vision.
     # Uncomment utk mengaktifkan lagi. (magic 920618)
@@ -246,6 +261,7 @@ advisor:
     - {magic: 920622, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau (1H)
     - {magic: 920624, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau_4h
     - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
+    - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (Claude confirm)
 
 audit:
   interval_minutes: 15       # continuous worker re-check cadence
