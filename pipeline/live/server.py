@@ -21,7 +21,7 @@ from .signal import SignalEngine
 
 _cfg = load_config()
 _engine = SignalEngine(_cfg)
-_strategies = _cfg["live"]["strategies"]
+_strategies = [s for s in _cfg["live"]["strategies"] if s.get("enabled", True)]
 _default_symbol = _strategies[0]["symbol"] if _strategies else None
 _hb_seconds = _cfg["live"].get("heartbeat_seconds", 15)
 _ea_timeout = max(3.0, 3 * _cfg["live"].get("poll_seconds", 1))  # EA "connected" if seen within this

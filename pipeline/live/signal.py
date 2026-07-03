@@ -916,6 +916,8 @@ class SignalEngine:
         self.data = data or DataProvider(self.cfg)
         self.strategies: list[BaseStrategy] = []
         for spec in self.cfg["live"]["strategies"]:
+            if not spec.get("enabled", True):        # archived/disabled slots skipped (e.g. Z off)
+                continue
             cls = STRATEGY_TYPES.get(spec["type"])
             if cls is None:
                 raise ValueError(f"Unknown strategy type: {spec['type']!r}")

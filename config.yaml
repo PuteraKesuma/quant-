@@ -149,6 +149,7 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
+      enabled: false        # ARCHIVED 2026-07-03 by user choice (reversible: set true + restart brain). See memory.
       type: zrev            #   2026-06-29 audit (entry20/exit20 = always-in): IS PF 1.09, OOS 1.58,
                             #   MC 5th-pct 1.18, 5/6 thn hijau, 0% order invalid. ~4 trade/minggu,
                             #   hold ~1 hari, SELALU ada posisi (flip ~tiap 1.8 hari). maxDD -$501 @0.01
@@ -177,6 +178,7 @@ live:
         history_bars: 15000 # ~250 jam = ~250 bar 1H (cukup utk EMA100+channel; kecil biar /signals cepat)
 
     - name: zrev_xau_4h     # Gold edge KEDUA: zrev di TF 4H (tangkap tren besar/lambat)
+      enabled: false        # ARCHIVED 2026-07-03 by user choice (reversible: set true + restart brain).
       type: zrev            #   2026-06-30 audit (xau_diversify.py): OOS PF 3.59, MC 1.71, net +$2500,
       symbol: XAUUSD        #   ~0.5 trade/mgg. Korelasi 0.84 ke 1H (bukan pengurangan risiko, aliran ke-2).
       lot: 0.01             # FIXED 0.01 (no dynamic lot) - jaga margin di exposure gold dobel
