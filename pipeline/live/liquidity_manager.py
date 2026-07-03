@@ -138,11 +138,13 @@ class LiquidityManager:
                 self._cancel(mt5, o.ticket)
             return
 
-        # flat -> decide the resting limit from the band
+        # flat -> resting limit at the NEAR band (user choice 2026-07-03: the band closest to
+        # price = a shallow pullback, not the far trailing band). Uptrend BUY at the upper/resist
+        # band (dn), downtrend SELL at the lower/support band (up).
         if trend == 1:
-            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = up_band; sl = up_band - self.sl_d; tp = up_band + self.tp_d
+            otype = mt5.ORDER_TYPE_BUY_LIMIT; price = dn_band; sl = dn_band - self.sl_d; tp = dn_band + self.tp_d
         elif trend == -1 and self.both_sides:
-            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = dn_band; sl = dn_band + self.sl_d; tp = dn_band - self.tp_d
+            otype = mt5.ORDER_TYPE_SELL_LIMIT; price = up_band; sl = up_band + self.sl_d; tp = up_band - self.tp_d
         else:
             for o in my_pend:
                 self._cancel(mt5, o.ticket)
