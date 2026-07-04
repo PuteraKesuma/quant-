@@ -17,6 +17,7 @@ $Bat       = "C:\Quant\START_TRADING.bat"
 $AdvBat    = "C:\Quant\START_ADVISOR.bat"
 $AdvJrn    = "C:\Quant\advisor_journal.jsonl"
 $LiqBat    = "C:\Quant\START_LIQMGR.bat"
+$OrbBat    = "C:\Quant\START_ORBMGR.bat"
 $Mt5Exe    = "C:\Program Files\MetaTrader 5\terminal64.exe"
 $HealthUrl = "http://127.0.0.1:8000/health"
 
@@ -26,6 +27,7 @@ $HeartbeatMin       = 30   # menit antar baris "sehat" rutin di jurnal
 $RestartCooldownMin = 3    # jeda minimum antar percobaan restart
 $AdvCooldownMin     = 3    # jeda minimum antar relaunch advisor (non-kritis, insight-only)
 $LiqCooldownMin     = 3    # jeda minimum antar relaunch liquidity manager (pasang order limit)
+$OrbCooldownMin     = 3    # jeda minimum antar relaunch orb stop manager (pasang order stop)
 
 function NowUtc { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") }
 function J($emoji, $msg) {
@@ -43,6 +45,11 @@ function LiqMgrUp {
          Where-Object { $_.CommandLine -match "pipeline\.live\.liquidity_manager" }
     return [bool]$p
 }
+function OrbMgrUp {
+    $p = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+         Where-Object { $_.CommandLine -match "pipeline\.live\.orb_stop_manager" }
+    return [bool]$p
+}
 
 $fail        = 0
 $down        = $false
@@ -55,6 +62,9 @@ $advFail        = 0
 $liqRestarts    = 0
 $lastLiqRestart = [datetime]::MinValue
 $liqFail        = 0
+$orbRestarts    = 0
+$lastOrbRestart = [datetime]::MinValue
+$orbFail        = 0
 
 J "==>" "Watchdog START. Cek tiap $Interval dtk; restart setelah $FailsToRestart gagal beruntun."
 
@@ -151,6 +161,18 @@ while ($true) {
             $liqRestarts++; $lastLiqRestart = Get-Date; $liqFail = 0
             J "LIQ" "Liquidity Manager tidak jalan (2 cek) - relaunch #$liqRestarts via START_LIQMGR.bat ..."
             Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $LiqBat -WorkingDirectory "C:\Quant"
+        }
+    }
+
+    # --- ORB Stop Manager (pasang order stop asli, magic 920617): relaunch kalau hilang ---
+    if (OrbMgrUp) {
+        $orbFail = 0
+    } else {
+        $orbFail++
+        if ($orbFail -ge 2 -and ((Get-Date) - $lastOrbRestart).TotalMinutes -ge $OrbCooldownMin) {
+            $orbRestarts++; $lastOrbRestart = Get-Date; $orbFail = 0
+            J "ORB" "ORB Stop Manager tidak jalan (2 cek) - relaunch #$orbRestarts via START_ORBMGR.bat ..."
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $OrbBat -WorkingDirectory "C:\Quant"
         }
     }
 

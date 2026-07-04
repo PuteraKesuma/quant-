@@ -116,11 +116,16 @@ live:
     - name: orb30_nas        # NAS100 — REPRODUCED 2026-06-28 (full live logic, M1 fill):
                              #   OOS PF 1.40, IS 1.28, 6/6 thn hijau, MC 5th-pct 1.04, 0% order invalid.
                              #   Edge nyata tapi TIPIS (exp ~0.08R). Klaim lama "1.52" sedikit optimis.
+      enabled: false         # 2026-07-04: EA market-slot OFF. The orb_stop_manager (brain-side) owns a
+                             #   REAL pending STOP at the range boundary for magic 920617 -> reclaims the
+                             #   +4.75..+16.30 pt entry slippage the market EA gave (signal_logic_audit.py).
+                             #   Faithful port of THIS slot's logic (same trades), EA untouched + still OUT
+                             #   of its own breakeven (BreakevenMagics=920621). See pipeline/live/orb_stop_manager.py.
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
       lot: 0.01              # start safe; scale once confirmed live
-      magic: 920617          # same magic -> existing US100 EA keeps managing it
+      magic: 920617          # manager owns it now (EA gets no NAS100 signal -> leaves it alone)
       params:
         range_minutes: 30    # NY 30-min opening range
         tp_mult: 1.0         # TP = 1 x range   (RR 1:1)
@@ -131,6 +136,10 @@ live:
         breakeven_r: 0.5     # DYNAMIC EXIT: once +0.5R, exit at entry on retrace (OOS 1.33->1.52, DD down, WF 11/11)
         range_filter: false  # dropped: trend filter already does the heavy lifting; RF added ~nothing
         session_end_utc: "20:00"  # time-exit if neither SL/TP hit
+        # --- orb_stop_manager: REAL pending STOP at the range boundary (via MT5, EA untouched) ---
+        pending_stop: true        # marks this slot for the standalone STOP manager (main() picks it up)
+        manager_poll_seconds: 10  # poll cadence (place the stop promptly at range_end; manage BE/exit)
+        dry_run: false            # 2026-07-04 LIVE on demo: places REAL pending STOP orders. (true = log-only.)
 
     - name: liquidity_limit_strategy   # Liquidity Limit — Supertrend band 'limit' entries (BOTH sides)
       enabled: false        # 2026-07-03: EA market-slot OFF. The liquidity_manager (brain-side) owns the
