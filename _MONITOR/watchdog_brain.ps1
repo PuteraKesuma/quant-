@@ -65,6 +65,10 @@ $liqFail        = 0
 $orbRestarts    = 0
 $lastOrbRestart = [datetime]::MinValue
 $orbFail        = 0
+$eaFail         = 0    # EA-polling check: brain sehat TAPI ea:{} kosong = EA hilang dari chart
+$lastEaRestart  = [datetime]::MinValue
+$EaFailsToRestart = 20   # 20 x 30 dtk = EA diam 10 menit (EA poll tiap detik, market buka/tutup)
+$EaCooldownMin    = 30   # jeda antar restart MT5 via jalur ini
 
 J "==>" "Watchdog START. Cek tiap $Interval dtk; restart setelah $FailsToRestart gagal beruntun."
 
@@ -161,6 +165,26 @@ while ($true) {
             $liqRestarts++; $lastLiqRestart = Get-Date; $liqFail = 0
             J "LIQ" "Liquidity Manager tidak jalan (2 cek) - relaunch #$liqRestarts via START_LIQMGR.bat ..."
             Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $LiqBat -WorkingDirectory "C:\Quant"
+        }
+    }
+
+    # --- EA polling check: 2026-07-05 VPS reboot membuat MT5 bangun TANPA EA di chart, semua
+    #     monitor lain tetap "sehat" 2.5 hari. EA poll brain tiap detik (timer, 24/7) -> kalau
+    #     brain UP tapi ea:{} kosong >= 10 mnt, profil chart kehilangan EA -> restart MT5
+    #     (profil sekarang menyimpan SignalExecutor, restart = EA terpasang lagi). ---
+    if ($ok) {
+        $eaAlive = $false
+        try {
+            $hj = $detail | ConvertFrom-Json
+            foreach ($p in @($hj.ea.PSObject.Properties)) { if ($p.Value.connected) { $eaAlive = $true } }
+            if ($eaAlive -or ($hj.uptime_seconds -lt 120)) { $eaFail = 0 } else { $eaFail++ }
+        } catch { }
+        if ($eaFail -ge $EaFailsToRestart -and ((Get-Date) - $lastEaRestart).TotalMinutes -ge $EaCooldownMin) {
+            $lastEaRestart = Get-Date; $eaFail = 0
+            J "EA " "EA TIDAK polling >=10 mnt (brain UP) - restart MT5 utk muat ulang profil chart+EA. CEK juga proses python (IPC) kalau masih bermasalah."
+            Stop-Process -Name terminal64 -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+            if (Test-Path $Mt5Exe) { Start-Process -FilePath $Mt5Exe }
         }
     }
 
