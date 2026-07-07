@@ -1,0 +1,57 @@
+Max Loss Rule Simplified Explanation
+This rule can also be called an “account stop-loss”. The trading account’s equity must not, at any moment during the account duration, decline below a specified percentage of the initial account balance. Depending on the account conditions, the maximum loss limit can be set at either 6% or 10%. This applies to both closed and open positions (account equity, not balance). The logic of the calculation is the same as with the Maximum Daily Loss; the only difference is that your previous profit will be accumulated into your total loss limit.
+Example Scenarios
+If you receive a virtual trading account with an initial balance of $50,000, your max loss rule could be set at either 6% (equity must not drop below $47,000) or 10% (equity must not drop below $45,000), depending on your account type. Let’s explore two cases based on a 6% max loss limit for clarity:
+Case 1: Current Equity at $49,000
+Initial balance: $50,000
+Current equity: $49,000
+Equity threshold to close: $47,000 (6% limit)
+If your losses exceed $2,000 and bring your equity to $47,000 or lower, your account will be closed for protection.
+Case 2: Current Equity at $51,000
+Initial balance: $50,000
+Current equity: $51,000
+Equity threshold to close: $47,000 (6% limit)
+Since you have a $1,000 profit, this adds to your total loss limit. If your losses surpass $4,000, bringing your equity to $47,000 or lower, your account will be closed.
+Important Notes
+Depending on your account conditions, your maximum loss limit may be either 6% or 10% of your initial balance.
+If your max loss limit is 10%, the threshold would be lower (e.g., $45,000 instead of $47,000 in the above example).
+Regardless of the limit applied to your account, once your total losses reach the specified percentage of the initial balance, your orders will be closed immediately to prevent further risk exposure.
+This rule serves as a risk management measure, ensuring that your account is protected from excessive losses while still allowing flexibility in trading.
+HOW IS IT CALCULATED?
+Current Max Loss = total current closed positions + the result of open positions.
+In your trading dashboard, this can be found under trading Objectives with the title Total loss. The number next to the Total loss represents the actual maximum max loss amount that you are allowed to lose on the trading day. The Remaining represents the remaining amount that you can lose on trading day.
+WHAT HAPPENS IF I BREAK THE MAX LOSS RULE?
+The account will be automatically liquidated for the remainder of the trading day until the market is closed on the trading day if the Max Loss was reached or surpassed for that trading day. You CAN NOT resume trading since it is a rule violation. You need to buy a new package to start again.
+A market order is sent to close any open positions by the auto liquidation mechanism when a Loss Limit threshold is reached. This can mean that the trader’s P&L ends up over the Loss Limit threshold, which would mean that the Real Loss is more than the Max Loss Limit, depending on where the market was fluctuating at the time. If the trader’s Net P&L does, in fact, “hit and exceed” the Max Loss Limit, then the auto liquidation, even with the ending P&L, is unquestionably the result of that liquidation.
+What is the Daily Loss Limit? and What Happens If I Break It?
+
+Written by WeMasterTrade Team
+
+1. How is the Maximum Daily Loss calculated?
+Fixed Daily Loss Value (depends on package) — The Max Daily Loss percentage (e.g., 2%, 4%, 5%) is fixed for the account package.
+Daily Loss Limit = InitialBalance × DailyLoss% (this value does not change during the day).
+For example, if your Initial Balance is $100,000 and the Dailyloss is 4%, then:
+Daily Loss Limit = $100,000 × 4% = $4,000.
+
+2. What are Prev Equity and Prev Balance, and why do they matter?
+At the start of each trading day, the system records two values:
+Prev Balance: Your account balance at the end of the previous day
+Prev Equity: Your equity at the start of the day (including any open positions)
+If you hold positions overnight, Prev Equity and Prev Balance may be different.
+The system will always use the higher value of the two as the reference for calculating the daily loss threshold.
+
+Example 1: Equity is higher than Balance
+Prev Balance: $105,000
+Prev Equity: $107,000
+Daily Loss Threshold: $107,000 – $4,000 = $103,000
+→ If your Equity drops below $103,000 at any time during the day, your account will be terminated
+
+Example 2: Balance is higher than Equity
+Prev Balance: $100,000
+Prev Equity: $99,000
+Daily Loss Threshold: $100,000 – $4,000 = $96,000
+→ If your Equity drops below $96,000 at any time during the day, your account will be terminated.
+Learn More Examples of This Rule Here
+WHAT HAPPENS IF I BREAK THE DAILY LOSS RULE?
+The account will be automatically liquidated for the remainder of the trading day until the market is closed on the trading day if the Daily Loss was reached or surpassed for that trading day. You CAN NOT resume trading since it is a rule violation. You need to buy a new package to start again
+A market order is sent to close any open positions by the auto liquidation mechanism when a Loss Limit threshold is reached. This can mean that the trader’s P&L ends up over the Loss Limit threshold, which would mean that the Real Loss is more than the Daily Loss Limit, depending on where the market was fluctuating. If the trader’s Net P&L does, in fact, “hit and exceed” the Daily Loss Limit, then the auto liquidation, even with the ending P&L, is unquestionably the result of that liquidation.
