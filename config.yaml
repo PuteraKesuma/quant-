@@ -263,6 +263,8 @@ live:
                             #   (demo was 0.02/0.01; validated ratio kept, scaled 2x for the funded acct.)
         history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
 
+    # (2026-07-09 dummy_wmt EA-loop test PASSED — brain->EA->WMT execution proven; slot removed.)
+
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
     # entry_z 2.5 < stop_z 3.0 berarti SETIAP sinyal dengan |z| >= 3.0 punya SL di sisi

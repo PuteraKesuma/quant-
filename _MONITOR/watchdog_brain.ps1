@@ -21,6 +21,7 @@ $OrbBat    = "C:\Quant\START_ORBMGR.bat"
 $GovBat    = "C:\Quant\START_GOVERNOR.bat"
 $Mt5Exe    = "C:\Program Files\MetaTrader 5\terminal64.exe"
 $HealthUrl = "http://127.0.0.1:8000/health"
+$TermDir   = Join-Path $env:APPDATA "MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075"
 
 $Interval           = 30   # detik antar cek
 $FailsToRestart     = 3    # gagal beruntun sebelum dianggap DOWN + restart
@@ -56,6 +57,22 @@ function GovUp {
          Where-Object { $_.CommandLine -match "pipeline\.live\.monthly_governor" }
     return [bool]$p
 }
+function AlgoDisabledNow {
+    # true if the EA log's recent lines show orders rejected 10027 (global Algo Trading button OFF)
+    $log = Join-Path $TermDir ("MQL5\Logs\" + (Get-Date).ToString("yyyyMMdd") + ".log")
+    if (-not (Test-Path $log)) { return $false }
+    $tail = Get-Content $log -Tail 12 -ErrorAction SilentlyContinue
+    return [bool]($tail -match "auto trading disabled")
+}
+function EnableAlgo {
+    # send Ctrl+E to the MT5 window to toggle the global Algo Trading button back ON
+    $p = Get-Process terminal64 -ErrorAction SilentlyContinue
+    if (-not $p) { return }
+    try {
+        $ws = New-Object -ComObject wscript.shell
+        if ($ws.AppActivate($p.Id)) { Start-Sleep -Milliseconds 600; $ws.SendKeys('^e') }
+    } catch { }
+}
 
 $fail        = 0
 $down        = $false
@@ -76,6 +93,8 @@ $lastGovRestart = [datetime]::MinValue
 $govFail        = 0
 $GovCooldownMin = 3
 $eaFail         = 0    # EA-polling check: brain sehat TAPI ea:{} kosong = EA hilang dari chart
+$lastAlgoFix     = [datetime]::MinValue
+$AlgoCooldownMin = 2    # jeda antar kirim Ctrl+E (aktifkan Algo Trading)
 $lastEaRestart  = [datetime]::MinValue
 $EaFailsToRestart = 20   # 20 x 30 dtk = EA diam 10 menit (EA poll tiap detik, market buka/tutup)
 $EaCooldownMin    = 30   # jeda antar restart MT5 via jalur ini
@@ -189,6 +208,15 @@ while ($true) {
             Start-Sleep -Seconds 5
             if (Test-Path $Mt5Exe) { Start-Process -FilePath $Mt5Exe }
         }
+    }
+
+    # --- Algo Trading toggle: an MT5 restart (VPS reboot / the EA-restart above) leaves the global
+    #     "Algo Trading" button OFF -> every order fails 10027 SILENTLY (heartbeat still trading=ON).
+    #     Found 2026-07-09 by the WMT dummy-signal test. Detect the 10027 in the EA log + Ctrl+E. ---
+    if (AlgoDisabledNow -and ((Get-Date) - $lastAlgoFix).TotalMinutes -ge $AlgoCooldownMin) {
+        $lastAlgoFix = Get-Date
+        J "ALG" "Algo Trading MATI (order 10027 di log EA) - kirim Ctrl+E ke MT5 utk aktifkan lagi."
+        EnableAlgo
     }
 
     # --- ORB Stop Manager (pasang order stop asli, magic 920617): relaunch kalau hilang ---
