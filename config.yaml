@@ -318,6 +318,17 @@ advisor:
     - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
     - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
 
+# MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) — the 'bersyukur' rule. Once month-to-
+# date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries
+# for the rest of the month (open positions ride). Resets on the 1st. Writes _MONITOR/governor.json,
+# read by the brain (Z+Golden) and the ORB manager. Run via START_GOVERNOR.bat.
+governor:
+  enabled: true
+  magics: [920617, 920622, 920626]   # ORB + Z + Golden (the live book)
+  threshold: 0.75                     # stop new entries at 75% of the month's forecast target
+  target_usd: null                    # null = target from forecast (book_weekly mean x weeks/month)
+  poll_seconds: 300                   # re-check month-to-date every 5 min
+
 audit:
   interval_minutes: 15       # continuous worker re-check cadence
   enable_repair: true        # auto-repair gaps/anomalies (false = report only)

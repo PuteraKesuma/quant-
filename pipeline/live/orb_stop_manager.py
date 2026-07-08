@@ -34,6 +34,16 @@ from ..fetch.base_fetcher import load_config
 from .data import DataProvider
 
 CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
+_GOV_STATE = Path(r"C:\Quant\_MONITOR\governor.json")
+
+
+def _entries_paused() -> bool:
+    """Monthly Profit Governor: when paused, place no NEW pending STOP (open position still managed)."""
+    try:
+        import json
+        return bool(json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("paused", False))
+    except Exception:
+        return False
 
 
 class OrbStopManager:
@@ -262,6 +272,12 @@ class OrbStopManager:
                 return
             if self.breakeven_r is not None:
                 self._manage_breakeven(mt5, pos, offset)
+            return
+
+        # --- monthly governor paused: no NEW entry -> drop any resting stop, wait for next month ---
+        if _entries_paused():
+            if my_pend:
+                self._cancel_all(mt5, my_pend)
             return
 
         # --- flat before the range completes: fresh slate (drop any stale stop) ---

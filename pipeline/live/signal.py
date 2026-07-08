@@ -25,6 +25,31 @@ from .data import DataProvider
 
 _DUMMY_CYCLE = ["FLAT", "BUY", "FLAT", "SELL"]  # one phase per minute
 
+# --- Monthly Profit Governor gate (the 'bersyukur' rule). When _MONITOR/governor.json is paused,
+#     strategies may only HOLD or EXIT — no NEW entry (FLAT->BUY/SELL) and no reversal. Open
+#     positions ride to their broker SL/TP. See pipeline/live/monthly_governor.py. ---
+import json as _json
+from pathlib import Path as _Path
+_GOV_STATE = _Path(r"C:\Quant\_MONITOR\governor.json")
+
+
+def _entries_paused() -> bool:
+    try:
+        return bool(_json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("paused", False))
+    except Exception:
+        return False
+
+
+def _governed(action: str, prev: str) -> str:
+    """Block new entries/reversals while the governor is paused; allow hold and exit."""
+    if not _entries_paused():
+        return action
+    if prev == "FLAT":
+        return "FLAT" if action in ("BUY", "SELL") else action        # no new entry
+    if action in ("BUY", "SELL") and action != prev:
+        return "FLAT"                                                  # reversal -> just exit
+    return action
+
 
 class BaseStrategy:
     """One config slot. Subclasses implement `evaluate()`."""
@@ -655,6 +680,8 @@ class ZRevStrategy(BaseStrategy):
             else:
                 action = "FLAT"
 
+        action = _governed(action, prev)                     # monthly governor: block new entry/reverse
+
         if action == "BUY":
             sl = exit_dn if self.use_sl else 0.0
         elif action == "SELL":
@@ -1137,6 +1164,7 @@ class GoldenStrategy(BaseStrategy):
             action = "BUY"
         elif mnorm >= self.hi and pnorm >= self.hi and trend < 0:  # sell the bounce WITH the downtrend
             action = "SELL"
+        action = _governed(action, "FLAT")                        # monthly governor: block new entry
         if action == "FLAT":
             return self._emit("FLAT", 0.0, 0.0, ts)
 

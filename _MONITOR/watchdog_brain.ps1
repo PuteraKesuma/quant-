@@ -18,6 +18,7 @@ $AdvBat    = "C:\Quant\START_ADVISOR.bat"
 $AdvJrn    = "C:\Quant\advisor_journal.jsonl"
 $LiqBat    = "C:\Quant\START_LIQMGR.bat"
 $OrbBat    = "C:\Quant\START_ORBMGR.bat"
+$GovBat    = "C:\Quant\START_GOVERNOR.bat"
 $Mt5Exe    = "C:\Program Files\MetaTrader 5\terminal64.exe"
 $HealthUrl = "http://127.0.0.1:8000/health"
 
@@ -50,6 +51,11 @@ function OrbMgrUp {
          Where-Object { $_.CommandLine -match "pipeline\.live\.orb_stop_manager" }
     return [bool]$p
 }
+function GovUp {
+    $p = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+         Where-Object { $_.CommandLine -match "pipeline\.live\.monthly_governor" }
+    return [bool]$p
+}
 
 $fail        = 0
 $down        = $false
@@ -65,6 +71,10 @@ $liqFail        = 0
 $orbRestarts    = 0
 $lastOrbRestart = [datetime]::MinValue
 $orbFail        = 0
+$govRestarts    = 0
+$lastGovRestart = [datetime]::MinValue
+$govFail        = 0
+$GovCooldownMin = 3
 $eaFail         = 0    # EA-polling check: brain sehat TAPI ea:{} kosong = EA hilang dari chart
 $lastEaRestart  = [datetime]::MinValue
 $EaFailsToRestart = 20   # 20 x 30 dtk = EA diam 10 menit (EA poll tiap detik, market buka/tutup)
@@ -190,6 +200,18 @@ while ($true) {
             $orbRestarts++; $lastOrbRestart = Get-Date; $orbFail = 0
             J "ORB" "ORB Stop Manager tidak jalan (2 cek) - relaunch #$orbRestarts via START_ORBMGR.bat ..."
             Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $OrbBat -WorkingDirectory "C:\Quant"
+        }
+    }
+
+    # --- Monthly Profit Governor (pause new entries at 75% of target): relaunch kalau hilang ---
+    if (GovUp) {
+        $govFail = 0
+    } else {
+        $govFail++
+        if ($govFail -ge 2 -and ((Get-Date) - $lastGovRestart).TotalMinutes -ge $GovCooldownMin) {
+            $govRestarts++; $lastGovRestart = Get-Date; $govFail = 0
+            J "GOV" "Monthly Governor tidak jalan (2 cek) - relaunch #$govRestarts via START_GOVERNOR.bat ..."
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $GovBat -WorkingDirectory "C:\Quant"
         }
     }
 
