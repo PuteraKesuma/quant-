@@ -1084,11 +1084,18 @@ class GoldenStrategy(BaseStrategy):
         self.atr_period = int(p.get("atr_period", 14))
         self.atr_mult = float(p.get("atr_mult", 3.0))      # SL = atr_mult x ATR(M5)
         self.tp_r = float(p.get("tp_r", 3.0))              # TP = tp_r x risk
+        # REGIME-BASED SIZING (validated playbook rule, research/regime_sizing.py): size up in the
+        # favorable low-ADX regime (Golden's best bin), stay base otherwise. 0.02 kept Sharpe while
+        # lifting net +40% / OOS 1.99->2.22; 0.03 lifted return but HURT Sharpe (rejected).
+        self.regime_sizing = bool(p.get("regime_sizing", False))
+        self.size_adx_thresh = float(p.get("size_adx_thresh", 20.0))
+        self.lot_favorable = float(p.get("lot_favorable", 0.02))
         self.history_bars = int(p.get("history_bars", 15000))
         self._prev_action = "FLAT"
         self._counter = 0
         self._sl = 0.0
         self._tp = 0.0
+        self._lot = float(self.lot)                        # lot for the current (held) position
         self._last_bar_ts = None
         self._reconciled = False
 
@@ -1140,6 +1147,8 @@ class GoldenStrategy(BaseStrategy):
             sl, tp = price - risk, price + self.tp_r * risk
         else:
             sl, tp = price + risk, price - self.tp_r * risk
+        # regime-based lot: size up in the favorable low-ADX regime (else base lot)
+        self._lot = self.lot_favorable if (self.regime_sizing and adx < self.size_adx_thresh) else self.lot
         return self._emit(action, round(sl, 5), round(tp, 5), ts)
 
     # ---- indicators (match research/semi_marti_*.py exactly) ----
@@ -1188,13 +1197,13 @@ class GoldenStrategy(BaseStrategy):
             self._prev_action = action
         sig_id = f"{self.symbol}-{self.name}-GOLD-{self._counter}"
         if action == "FLAT":
-            self._sl = self._tp = 0.0
+            self._sl = self._tp = 0.0; self._lot = float(self.lot)
             return flat(self.name, self.symbol, self.magic, sig_id, ts)
         self._sl, self._tp = sl, tp
-        logger.info(f"[{self.name}] GOLDEN {action} sl={sl} tp={tp} lot={self.lot}")
+        logger.info(f"[{self.name}] GOLDEN {action} sl={sl} tp={tp} lot={self._lot}")
         return SignalResponse(
             strategy=self.name, symbol=self.symbol, action=action,
-            sl=sl, tp=tp, lot=self.lot, magic=self.magic, signal_id=sig_id, ts=ts,
+            sl=sl, tp=tp, lot=self._lot, magic=self.magic, signal_id=sig_id, ts=ts,
         )
 
     def _reconcile(self) -> None:
@@ -1210,7 +1219,7 @@ class GoldenStrategy(BaseStrategy):
             if not self._reconciled:
                 if pos is not None:
                     self._prev_action = "BUY" if pos.type == mt5.POSITION_TYPE_BUY else "SELL"
-                    self._sl, self._tp = float(pos.sl), float(pos.tp)
+                    self._sl, self._tp = float(pos.sl), float(pos.tp); self._lot = float(pos.volume)
                     logger.info(f"[{self.name}] reconciled to existing {self._prev_action} sl={pos.sl} tp={pos.tp}")
                 self._reconciled = True
             elif self._prev_action in ("BUY", "SELL") and pos is None:

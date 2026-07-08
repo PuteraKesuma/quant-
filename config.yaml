@@ -251,6 +251,11 @@ live:
         atr_period: 14
         atr_mult: 3.0       # SL = 3 x ATR(M5)
         tp_r: 3.0           # TP = 3 x risk (let winners run WITH the trend)
+        # --- regime-based sizing (validated playbook rule, research/regime_sizing.py) ---
+        regime_sizing: true # size up in the favorable low-ADX regime (Golden's best bin)
+        size_adx_thresh: 20 # H1 ADX < this -> favorable regime
+        lot_favorable: 0.02 # lot when favorable (else base `lot` 0.01). 0.02 kept Sharpe + net +40%;
+                            #   0.03 lifted return but HURT Sharpe (over-leverage) -> rejected.
         history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
