@@ -1,11 +1,15 @@
 # Forward test — proving the live edge before real money
 
-**RESTARTED: 2026-07-03** (demo, FBS-Demo). Horizon: **~3 months (13 weeks)** from restart.
-The 2026-07-01 test was voided: the book changed (Z archived, liquidity added, then the FULL
-book chosen). The deployed book is now **Z (zrev 1H) + orb30_nas + liquidity_limit (15min)**
-per `research/portfolio_best.py` (FULL book OOS-PF 1.87, net +$4685, 2022 ~breakeven; the
-NAS+LIQ-only book was the weakest: OOS 1.56, negative 2022). Cone rebuilt from
-`research/book_weekly.csv` (weekly $ dist of this exact book).
+**RESTAMPED: 2026-07-08** — book simplified to **ONE strategy per commodity: Z (zrev 1H, XAU) +
+orb30_nas (NQ)**. LIQ retired (weakest edge PF 1.33, 2022 negative, the main bleeder in the gold
+downtrend). This 2-strategy book = the "PREVIOUS (Z+NAS)" book in `research/portfolio_best.py`,
+which is BETTER risk-adjusted than the FULL book: OOS-PF **1.98** (vs 1.87), maxDD **−$360** (vs
+−$585), 2022 **+$153** (vs −$1). Cone now = the Z+NAS sim (book_weekly.csv archived → tracker
+fallback). New start marker stamped at the current real demo balance (LIQ's realized losses are
+sunk; from here only Z+ORB trades count).
+
+_(History: RESTARTED 2026-07-03 with the FULL book Z+ORB+LIQ; the 2026-07-01 test was voided when
+the book changed. LIQ dropped 2026-07-08.)_
 **Capital for eventual go-live:** $400, confirmed RISK CAPITAL (affordable to lose 100%).
 
 ## Why

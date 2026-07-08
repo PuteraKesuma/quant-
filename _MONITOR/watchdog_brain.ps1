@@ -156,17 +156,10 @@ while ($true) {
         }
     }
 
-    # --- Liquidity Manager (pasang order limit asli, magic 920625): relaunch kalau hilang ---
-    if (LiqMgrUp) {
-        $liqFail = 0
-    } else {
-        $liqFail++
-        if ($liqFail -ge 2 -and ((Get-Date) - $lastLiqRestart).TotalMinutes -ge $LiqCooldownMin) {
-            $liqRestarts++; $lastLiqRestart = Get-Date; $liqFail = 0
-            J "LIQ" "Liquidity Manager tidak jalan (2 cek) - relaunch #$liqRestarts via START_LIQMGR.bat ..."
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $LiqBat -WorkingDirectory "C:\Quant"
-        }
-    }
+    # --- Liquidity Manager: RETIRED 2026-07-08 (weakest edge PF 1.33, bled in the gold downtrend;
+    #     user simplified to one strategy per commodity: Z=XAU, ORB=NQ). NO relaunch. Do NOT
+    #     re-enable without re-adding the relaunch block + START_LIQMGR startup shortcut. ---
+    # (LiqMgrUp intentionally not watched)
 
     # --- EA polling check: 2026-07-05 VPS reboot membuat MT5 bangun TANPA EA di chart, semua
     #     monitor lain tetap "sehat" 2.5 hari. EA poll brain tiap detik (timer, 24/7) -> kalau

@@ -142,8 +142,11 @@ live:
         dry_run: false            # 2026-07-04 LIVE on demo: places REAL pending STOP orders. (true = log-only.)
 
     - name: liquidity_limit_strategy   # Liquidity Limit — Supertrend band 'limit' entries (BOTH sides)
-      enabled: false        # 2026-07-03: EA market-slot OFF. The liquidity_manager (brain-side) owns the
-                            #   REAL pending LIMIT order via MT5 (EA is market-only + never modified).
+      enabled: false        # RETIRED 2026-07-08: weakest edge (PF 1.33, 2022 negative) and the main
+                            #   bleeder in the gold downtrend. User simplified to ONE strategy per
+                            #   commodity: Z=XAU, ORB=NQ. liquidity_manager process STOPPED, its pending
+                            #   order cancelled, watchdog relaunch removed, startup shortcut archived.
+                            #   To revive: re-add watchdog LiqMgr block + START_LIQMGR startup shortcut.
       type: liqlimit        #   See pipeline/live/liquidity_manager.py. Claude confirms fills via advisor.
       symbol: XAUUSD
       lot: 0.01
