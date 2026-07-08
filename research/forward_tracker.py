@@ -48,10 +48,14 @@ def get_marker(m):
 
 
 def forward_trades(m, start_epoch):
-    frm = datetime.fromtimestamp(start_epoch, timezone.utc) - timedelta(days=1)
+    # Attribute each exit deal by its POSITION's ENTRY magic (the closing deal's magic can be wrong:
+    # MT5 tags a close with the EA's last-set magic). Wide lookback builds the position->magic map.
+    frm = datetime.fromtimestamp(start_epoch, timezone.utc) - timedelta(days=60)
     deals = m.history_deals_get(frm, datetime.now(timezone.utc) + timedelta(days=2)) or []
+    entry_magic = {d.position_id: d.magic for d in deals if d.entry == 0}
     rows = [(d.time, d.profit + d.swap + d.commission, d.symbol)
-            for d in deals if d.magic in MAGICS and d.entry == 1 and d.time > start_epoch]
+            for d in deals if d.entry == 1 and d.time > start_epoch
+            and entry_magic.get(d.position_id, d.magic) in MAGICS]
     return sorted(rows)
 
 

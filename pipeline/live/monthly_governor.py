@@ -57,15 +57,24 @@ class MonthlyGovernor:
         return mean_wk * (days / 7.0)
 
     def _mtd(self, mt5, now, off) -> float:
+        """Month-to-date realized PnL, attributed by the POSITION's ENTRY magic (not the closing
+        deal's magic, which can be wrong — MT5 tags a close with the EA's last-set magic). Wide
+        lookback captures entries of positions that opened earlier but closed this month."""
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        frm = (month_start - timedelta(days=2)).to_pydatetime()
+        frm = (month_start - timedelta(days=60)).to_pydatetime()
         to = (now + timedelta(days=1)).to_pydatetime()
+        deals = mt5.history_deals_get(frm, to) or []
+        entry_magic = {d.position_id: d.magic for d in deals if d.entry == 0}   # position -> true magic
         tot = 0.0
-        for d in (mt5.history_deals_get(frm, to) or []):
-            if d.magic in self.magics and d.entry == 1:            # realized (exit) deals
-                t_utc = pd.Timestamp(d.time, unit="s", tz="UTC") - pd.Timedelta(hours=off)
-                if t_utc >= month_start:
-                    tot += d.profit + d.swap + d.commission
+        for d in deals:
+            if d.entry != 1:                                        # realized (exit) deals only
+                continue
+            mg = entry_magic.get(d.position_id, d.magic)            # attribute by entry magic
+            if mg not in self.magics:
+                continue
+            t_utc = pd.Timestamp(d.time, unit="s", tz="UTC") - pd.Timedelta(hours=off)
+            if t_utc >= month_start:
+                tot += d.profit + d.swap + d.commission
         return float(tot)
 
     def poll_once(self, mt5) -> None:
