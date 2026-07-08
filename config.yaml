@@ -202,8 +202,13 @@ live:
         dynamic_lot: true   # 2026-06-29 TEST: lot ikut momentum entry (z-score). Validasi: net +37%,
         lot_min: 0.01       #   DD -30%->-16%. z_dir<1 -> 0.01; ~2 -> 0.02; >=3 -> 0.03. Fail-safe.
         lot_max: 0.02       #   2026-07-01 KONSERVATIF jangka-panjang: plafon 0.02 (was 0.03 -> DD terburuk 5thn -65%)
-        lot_z_lo: 1.0       # z_dir di mana lot mulai naik dari lot_min
-        lot_z_hi: 3.0       # z_dir di mana lot capai lot_max (plafon absolut)
+        lot_z_lo: 0.5       # 2026-07-08 PLAYBOOK RULE #3 (research/z_momentum_sizing.py, walk-forward):
+        lot_z_hi: 1.0       #   size 0.02 at entry-momentum z_dir>=1 (was z_hi 3.0 = only at z>=2).
+                            #   Sharpe 1.20->1.26, net +27%, OOS 2.48->2.34, same 0.02 cap/tail. 0.03
+                            #   rejected (tail -$408, Sharpe barely better). NOTE: lot_per_balance below
+                            #   keeps Z at 0.01 until ~$1500+ balance, so NO change at $260 (safety);
+                            #   the momentum tilt only arms as the account grows. Z loss -$136@0.01 ->
+                            #   -$272@0.02, which a small account cannot survive -> the cap is mandatory.
         lot_per_balance: 0.0000067 # 2026-07-01 KONSERVATIF: cap = balance*0.0000067 (~0.01/$1500).
                             #   $387->0.01 (fixed), tetap 0.01 s/d ~$1500, baru naik ke plafon 0.02 di ~$3000.
                             #   MC: DD terburuk 5thn ~-28%, risk-of-ruin ~0%. Survival jangka panjang.
