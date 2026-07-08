@@ -228,6 +228,31 @@ live:
         daily_sma: 50
         history_bars: 15000 # ~250 jam = ~62 bar 4H (cukup utk EMA50+channel; kecil biar /signals cepat)
 
+    - name: golden_xau      # Golden Strategy 1 — rehabilitated Semi-Marti EA signal (martingale stripped)
+      enabled: true         # 2026-07-08 DEMO PAPER-TEST. Market entry via the XAUUSD EA (like Z), broker
+                            #   ATR stop + 3R TP. Backtest: PF 2.14, OOS 1.99, maxDD -35% vs unfiltered,
+                            #   11/11 walk-forward, 6/6 green (research/semi_marti_*.py + regime_adaptive.py).
+      type: golden          #   Corr to Z only +0.15 = genuine XAU complement. IN-SAMPLE only -> forward-test.
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920626         # UNIQUE (920617=NQ ORB, 920622=Z, 920624=zrev4h archived, 920625=LIQ retired)
+      params:
+        timeframe: "5min"   # signal TF (normalized MACD + price over norm bars)
+        trend_tf: "1h"      # trend/ADX timeframe
+        norm_period: 100    # min-max normalization window
+        level_low: 15       # both norms <= this -> oversold BUY (with uptrend)
+        level_high: 80      # both norms >= this -> overbought SELL (with downtrend)
+        macd_fast: 5
+        macd_slow: 13
+        macd_signal: 9
+        ema_trend: 15       # H1 EMA whose slope = the trend gate (FAST = the validated lever)
+        adx_period: 14
+        adx_max: 40         # skip entries when H1 ADX > this (over-extended trend, no edge either way)
+        atr_period: 14
+        atr_mult: 3.0       # SL = 3 x ATR(M5)
+        tp_r: 3.0           # TP = 3 x risk (let winners run WITH the trend)
+        history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
+
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
     # entry_z 2.5 < stop_z 3.0 berarti SETIAP sinyal dengan |z| >= 3.0 punya SL di sisi
@@ -280,7 +305,8 @@ advisor:
     - {magic: 920622, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau (1H)
     - {magic: 920624, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau_4h
     - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
-    - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (Claude confirm)
+    - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
+    - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
 
 audit:
   interval_minutes: 15       # continuous worker re-check cadence

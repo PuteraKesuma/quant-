@@ -1053,6 +1053,173 @@ class LiquidityLimitStrategy(BaseStrategy):
             logger.warning(f"[{self.name}] reconcile retry: {e}")
 
 
+class GoldenStrategy(BaseStrategy):
+    """Golden Strategy 1 — the rehabilitated Semi-Martingale EA SIGNAL (martingale stripped),
+    validated XAU M5. Fades a normalized-MACD(5/13/9)+normalized-price extreme (both <= level_low
+    -> BUY / both >= level_high -> SELL over `norm` bars) ONLY with the H1-EMA(ema_trend) trend, and
+    STANDS ASIDE in over-extended trends (H1 ADX(adx_period) > adx_max). Market entry; broker-managed
+    ATR stop (atr_mult x ATR) + tp_r-R take-profit; one position; broker SL/TP is the exit.
+
+    Backtest (research/semi_marti_*.py + regime_adaptive.py): the raw EA signal LOSES (fade blindly
+    counter-trend); fading only WITH the fast H1 trend + skip ADX>40 -> PF 2.14, OOS-PF 1.99, maxDD
+    -35% vs unfiltered, 11/11 walk-forward windows, 6/6 green years. Monthly-PnL corr to Z only +0.15
+    (genuine XAU complement, unlike the retired LIQ). Restart-safe: adopts any existing MT5 position
+    (and its broker SL/TP) on the first poll; each poll detects a broker close -> flat. One entry per
+    completed M5 bar. DEMO paper-test slot (magic 920626); Claude annotates via the shadow advisor."""
+
+    def __init__(self, spec: dict, cfg: dict, data: DataProvider):
+        super().__init__(spec, cfg, data)
+        p = spec.get("params", {})
+        self.timeframe = str(p.get("timeframe", "5min"))
+        self.trend_tf = str(p.get("trend_tf", "1h"))
+        self.norm = int(p.get("norm_period", 100))
+        self.lo = float(p.get("level_low", 15.0))
+        self.hi = float(p.get("level_high", 80.0))
+        self.macd_fast = int(p.get("macd_fast", 5))
+        self.macd_slow = int(p.get("macd_slow", 13))
+        self.macd_signal = int(p.get("macd_signal", 9))
+        self.ema_trend = int(p.get("ema_trend", 15))       # H1 EMA whose slope defines the trend
+        self.adx_period = int(p.get("adx_period", 14))
+        self.adx_max = float(p.get("adx_max", 40.0))       # skip entries when trend over-extended
+        self.atr_period = int(p.get("atr_period", 14))
+        self.atr_mult = float(p.get("atr_mult", 3.0))      # SL = atr_mult x ATR(M5)
+        self.tp_r = float(p.get("tp_r", 3.0))              # TP = tp_r x risk
+        self.history_bars = int(p.get("history_bars", 15000))
+        self._prev_action = "FLAT"
+        self._counter = 0
+        self._sl = 0.0
+        self._tp = 0.0
+        self._last_bar_ts = None
+        self._reconciled = False
+
+    def evaluate(self) -> SignalResponse:
+        now = pd.Timestamp.utcnow()
+        ts = now.isoformat()
+        self._reconcile()
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        m = self._resample(df, self.timeframe)
+        h = self._resample(df, self.trend_tf)
+        if len(m) < self.norm + 6 or len(h) < max(self.ema_trend, self.adx_period) + 3:
+            return self._emit("FLAT", 0.0, 0.0, ts)               # warming up
+        cur_m = now.floor(self.timeframe)
+        m_c = m.iloc[:-1] if (m.index[-1] == cur_m and len(m) > 1) else m
+        cur_h = now.floor(self.trend_tf)
+        h_c = h.iloc[:-1] if (h.index[-1] == cur_h and len(h) > 1) else h
+
+        if self._prev_action in ("BUY", "SELL"):                  # holding -> broker manages TP/SL
+            return self._emit(self._prev_action, self._sl, self._tp, ts)
+
+        last_bar = m_c.index[-1]                                   # one entry per completed M5 bar
+        if self._last_bar_ts is not None and last_bar <= self._last_bar_ts:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
+        mnorm, pnorm = self._norm_indicators(m_c)
+        trend = self._trend_dir(h_c)
+        adx = self._adx(h_c)
+        atr = self._atr(m_c)
+        import numpy as np
+        if not (np.isfinite(mnorm) and np.isfinite(pnorm) and np.isfinite(adx) and np.isfinite(atr)) or atr <= 0:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        if adx > self.adx_max:                                    # over-extended trend -> stand aside
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
+        action = "FLAT"
+        if mnorm <= self.lo and pnorm <= self.lo and trend > 0:   # buy the dip WITH the uptrend
+            action = "BUY"
+        elif mnorm >= self.hi and pnorm >= self.hi and trend < 0:  # sell the bounce WITH the downtrend
+            action = "SELL"
+        if action == "FLAT":
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
+        self._last_bar_ts = last_bar
+        price = float(m_c["close"].iloc[-1])
+        risk = self.atr_mult * atr
+        if action == "BUY":
+            sl, tp = price - risk, price + self.tp_r * risk
+        else:
+            sl, tp = price + risk, price - self.tp_r * risk
+        return self._emit(action, round(sl, 5), round(tp, 5), ts)
+
+    # ---- indicators (match research/semi_marti_*.py exactly) ----
+    def _resample(self, df, tf):
+        return (df.resample(tf).agg({"open": "first", "high": "max", "low": "min",
+                                     "close": "last", "volume": "sum"}).dropna(subset=["open"]))
+
+    def _norm_indicators(self, m):
+        import numpy as np
+        c = m["close"]
+        macd_sig = (c.ewm(span=self.macd_fast, adjust=False).mean()
+                    - c.ewm(span=self.macd_slow, adjust=False).mean()).rolling(self.macd_signal).mean()
+        mn, mx = macd_sig.rolling(self.norm).min(), macd_sig.rolling(self.norm).max()
+        mnorm = ((macd_sig - mn) / (mx - mn).replace(0, np.nan) * 100).iloc[-1]
+        pmn, pmx = c.rolling(self.norm).min(), c.rolling(self.norm).max()
+        pnorm = ((c - pmn) / (pmx - pmn).replace(0, np.nan) * 100).iloc[-1]
+        return float(mnorm), float(pnorm)
+
+    def _trend_dir(self, h):
+        import numpy as np
+        d = h["close"].ewm(span=self.ema_trend, adjust=False).mean().diff().iloc[-1]
+        return int(np.sign(d)) if np.isfinite(d) else 0
+
+    def _adx(self, h):
+        import numpy as np
+        n = self.adx_period
+        up = h["high"].diff(); dn = -h["low"].diff()
+        plus = np.where((up > dn) & (up > 0), up, 0.0)
+        minus = np.where((dn > up) & (dn > 0), dn, 0.0)
+        tr = pd.concat([h["high"] - h["low"], (h["high"] - h["close"].shift()).abs(),
+                        (h["low"] - h["close"].shift()).abs()], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1 / n, adjust=False).mean()
+        pdi = 100 * pd.Series(plus, index=h.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+        mdi = 100 * pd.Series(minus, index=h.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+        dx = 100 * (pdi - mdi).abs() / (pdi + mdi).replace(0, np.nan)
+        return float(dx.ewm(alpha=1 / n, adjust=False).mean().iloc[-1])
+
+    def _atr(self, m):
+        tr = pd.concat([m["high"] - m["low"], (m["high"] - m["close"].shift()).abs(),
+                        (m["low"] - m["close"].shift()).abs()], axis=1).max(axis=1)
+        return float(tr.ewm(alpha=1 / self.atr_period, adjust=False).mean().iloc[-1])
+
+    def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:
+        if action != self._prev_action:
+            self._counter += 1
+            self._prev_action = action
+        sig_id = f"{self.symbol}-{self.name}-GOLD-{self._counter}"
+        if action == "FLAT":
+            self._sl = self._tp = 0.0
+            return flat(self.name, self.symbol, self.magic, sig_id, ts)
+        self._sl, self._tp = sl, tp
+        logger.info(f"[{self.name}] GOLDEN {action} sl={sl} tp={tp} lot={self.lot}")
+        return SignalResponse(
+            strategy=self.name, symbol=self.symbol, action=action,
+            sl=sl, tp=tp, lot=self.lot, magic=self.magic, signal_id=sig_id, ts=ts,
+        )
+
+    def _reconcile(self) -> None:
+        """First poll: adopt any existing MT5 position (restart-safe). Each poll: if we think we
+        hold but MT5 has none under this magic, the broker closed it (SL/TP) -> reset flat. Never raises."""
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            pos = None
+            for p in (mt5.positions_get(symbol=mt5_symbol) or ()):
+                if p.magic == self.magic:
+                    pos = p; break
+            if not self._reconciled:
+                if pos is not None:
+                    self._prev_action = "BUY" if pos.type == mt5.POSITION_TYPE_BUY else "SELL"
+                    self._sl, self._tp = float(pos.sl), float(pos.tp)
+                    logger.info(f"[{self.name}] reconciled to existing {self._prev_action} sl={pos.sl} tp={pos.tp}")
+                self._reconciled = True
+            elif self._prev_action in ("BUY", "SELL") and pos is None:
+                logger.info(f"[{self.name}] position closed by broker (SL/TP) -> FLAT")
+                self._prev_action = "FLAT"; self._sl = self._tp = 0.0
+        except Exception as e:
+            logger.warning(f"[{self.name}] reconcile skipped: {e}")
+
+
 # register new model types here; config `type:` selects one
 STRATEGY_TYPES = {
     "dummy": DummyStrategy,
@@ -1061,6 +1228,7 @@ STRATEGY_TYPES = {
     "zrev": ZRevStrategy,        # Z Strategy (Donchian stop-and-reverse)
     "mr": MeanReversionStrategy, # Mean-reversion z-score fade (diversifier)
     "liqlimit": LiquidityLimitStrategy,  # Liquidity Limit (Supertrend band 'limit' entries)
+    "golden": GoldenStrategy,    # Golden Strategy 1 (fade-with-trend M5 XAU + ADX skip)
 }
 
 
