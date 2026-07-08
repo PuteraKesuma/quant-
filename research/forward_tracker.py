@@ -25,8 +25,9 @@ from zrev_dual_trend import sim_dual, daily_map
 from portfolio_audit import nas_dollars
 
 MARKER = Path(r"C:\Quant\_MONITOR\forward_test.json")
-MAGICS = {920617, 920622}                  # orb30_nas (NQ) + zrev_xau (XAU) — 2026-07-08 simplified to
-                                           # ONE strategy per commodity; LIQ (920625) RETIRED (weak edge)
+MAGICS = {920617, 920622, 920626}          # orb30_nas (NQ) + zrev_xau (XAU) + golden_xau (XAU) —
+                                           # 2026-07-08 Golden added (paper-test); LIQ (920625) RETIRED.
+                                           # Cone (book_weekly.csv) rebuilt for this 3-strategy book.
 BOOK_CSV = Path(r"C:\Quant\research\book_weekly.csv")   # weekly $ dist of the deployed book
 HORIZON_W = 13                              # ~3 months
 DD_LIMIT = 0.30                            # hard-stop drawdown criterion
