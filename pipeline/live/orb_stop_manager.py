@@ -46,6 +46,15 @@ def _entries_paused() -> bool:
         return False
 
 
+def _risk_cap() -> float:
+    """Per-trade $ risk cap from the governor (0 = no cap)."""
+    try:
+        import json
+        return float(json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", 0.0))
+    except Exception:
+        return 0.0
+
+
 class OrbStopManager:
     def __init__(self, cfg: dict, spec: dict):
         p = spec.get("params", {})
@@ -337,6 +346,14 @@ class OrbStopManager:
             otype = mt5.ORDER_TYPE_SELL_STOP
         if not self.use_sl:
             sl = 0.0
+
+        # --- per-trade risk cap (WMT $90 rule): if this session's stop is too wide, skip it ---
+        cap = _risk_cap()
+        info0 = mt5.symbol_info(self.mt5_symbol)
+        if cap > 0 and info0 and self.use_sl and abs(entry - sl) * self.lot * info0.trade_contract_size > cap:
+            logger.info(f"[orbmgr] risk cap: range stop too wide (> ${cap:.0f}) -> skip session")
+            self._cancel_all(mt5, my_pend)
+            return
 
         # --- if the trend-side already broke, don't chase a trade that has since exited ---
         if fb_side == side and self._already_exited(df, fb_ts, side, entry, sl, tp):

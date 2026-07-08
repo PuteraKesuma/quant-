@@ -13,7 +13,7 @@ symbols:
   XAUUSD:
     type: commodity
     pip_size: 0.01
-    mt5_symbol: "XAUUSD"
+    mt5_symbol: "XAUUSDx"      # 2026-07-08 WMT: gold symbol is XAUUSDx (same specs: 0.01 lot=$1/pt)
     dukascopy_instrument: "XAU/USD"
     sessions:
       asia:     { open: "00:00", close: "01:00", tz: "UTC" }   # Tokyo open; ORB edge validated OOS pf 1.17
@@ -22,7 +22,7 @@ symbols:
   NAS100:
     type: index
     pip_size: 0.25
-    mt5_symbol: "US100"
+    mt5_symbol: "NQ100x"       # 2026-07-08 WMT: Nasdaq is NQ100x (vol_min 0.1, $0.10/pt = demo 0.01 US100)
     dukascopy_instrument: "E_NQ-100"
     sessions:
       new_york: { open: "13:30", close: "14:30", tz: "UTC" }
@@ -124,7 +124,7 @@ live:
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
-      lot: 0.01              # start safe; scale once confirmed live
+      lot: 0.2               # 2026-07-08 WMT: NQ100x min 0.1; 0.2 = ~2x demo ($0.20/pt, risk ~$50)
       magic: 920617          # manager owns it now (EA gets no NAS100 signal -> leaves it alone)
       params:
         range_minutes: 30    # NY 30-min opening range
@@ -189,7 +189,7 @@ live:
                             #   hold ~1 hari, SELALU ada posisi (flip ~tiap 1.8 hari). maxDD -$501 @0.01
                             #   lot -> under-capitalized di $400 demo; real money butuh ~$1500+.
       symbol: XAUUSD
-      lot: 0.01             # broker min XAU; always-in (selalu 1 posisi long/short)
+      lot: 0.02             # 2026-07-08 WMT: base 0.02 (was 0.01 demo); dynamic lot 0.02-0.04
       magic: 920622         # UNIQUE (920617=US100, 920618=orb_xau, 920620=orb_xau_asia lama, 920621=vision)
       params:
         entry_n: 20         # entry channel = breakout 20 jam (Donchian)
@@ -200,8 +200,8 @@ live:
         daily_filter: true  # 2026-06-29: gate tren HARIAN (multi-TF align) -> DD -$406->-$313 (-23%),
         daily_sma: 50       #   PF 1.33->1.63, OOS 2.19, MC 1.41. Cuma trade kalau H1 + harian sepakat.
         dynamic_lot: true   # 2026-06-29 TEST: lot ikut momentum entry (z-score). Validasi: net +37%,
-        lot_min: 0.01       #   DD -30%->-16%. z_dir<1 -> 0.01; ~2 -> 0.02; >=3 -> 0.03. Fail-safe.
-        lot_max: 0.02       #   2026-07-01 KONSERVATIF jangka-panjang: plafon 0.02 (was 0.03 -> DD terburuk 5thn -65%)
+        lot_min: 0.02       #   2026-07-08 WMT funded ($9.7k): 0.02-0.04 dynamic by momentum.
+        lot_max: 0.04       #   the WMT Rules Governor caps any single trade at $90 risk (skip if over).
         lot_z_lo: 0.5       # 2026-07-08 PLAYBOOK RULE #3 (research/z_momentum_sizing.py, walk-forward):
         lot_z_hi: 1.0       #   size 0.02 at entry-momentum z_dir>=1 (was z_hi 3.0 = only at z>=2).
                             #   Sharpe 1.20->1.26, net +27%, OOS 2.48->2.34, same 0.02 cap/tail. 0.03
@@ -239,7 +239,7 @@ live:
                             #   11/11 walk-forward, 6/6 green (research/semi_marti_*.py + regime_adaptive.py).
       type: golden          #   Corr to Z only +0.15 = genuine XAU complement. IN-SAMPLE only -> forward-test.
       symbol: XAUUSD
-      lot: 0.01
+      lot: 0.02             # 2026-07-08 WMT: base 0.02 (regime-sized to 0.04 in favorable low-ADX)
       magic: 920626         # UNIQUE (920617=NQ ORB, 920622=Z, 920624=zrev4h archived, 920625=LIQ retired)
       params:
         timeframe: "5min"   # signal TF (normalized MACD + price over norm bars)
@@ -259,8 +259,8 @@ live:
         # --- regime-based sizing (validated playbook rule, research/regime_sizing.py) ---
         regime_sizing: true # size up in the favorable low-ADX regime (Golden's best bin)
         size_adx_thresh: 20 # H1 ADX < this -> favorable regime
-        lot_favorable: 0.02 # lot when favorable (else base `lot` 0.01). 0.02 kept Sharpe + net +40%;
-                            #   0.03 lifted return but HURT Sharpe (over-leverage) -> rejected.
+        lot_favorable: 0.04 # 2026-07-08 WMT: 0.04 in favorable regime (base 0.02). Risk-capped $90/trade.
+                            #   (demo was 0.02/0.01; validated ratio kept, scaled 2x for the funded acct.)
         history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
 
     # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
@@ -324,10 +324,18 @@ advisor:
 # read by the brain (Z+Golden) and the ORB manager. Run via START_GOVERNOR.bat.
 governor:
   enabled: true
+  mode: rules                         # 2026-07-08 WMT FUNDED: enforce PROP RULES (NOT bersyukur profit-take)
   magics: [920617, 920622, 920626]   # ORB + Z + Golden (the live book)
-  threshold: 0.75                     # stop new entries at 75% of the month's forecast target
-  target_usd: null                    # null = target from forecast (book_weekly mean x weeks/month)
-  poll_seconds: 300                   # re-check month-to-date every 5 min
+  # --- WMT rules mode (funded acct 1113545, $10k initial) ---
+  max_risk_per_trade: 90             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
+  daily_loss_usd: 500                # WMT daily loss limit
+  daily_stop_buffer: 60              # pause NEW entries when today's realized loss reaches (500-60)=$440
+  maxloss_floor: 9000                # WMT max total loss floor (10% of $10k initial, static)
+  maxloss_buffer: 150                # pause+flatten when equity falls to (9000+150)=$9150 (protect account)
+  poll_seconds: 60                   # funded acct -> check faster
+  # --- profit ('bersyukur') mode fields, unused when mode=rules ---
+  threshold: 0.75
+  target_usd: null
 
 audit:
   interval_minutes: 15       # continuous worker re-check cadence

@@ -51,6 +51,30 @@ def _governed(action: str, prev: str) -> str:
     return action
 
 
+def _risk_cap() -> float:
+    """Per-trade $ risk cap from the governor (0 = no cap, e.g. demo/profit mode)."""
+    try:
+        return float(_json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", 0.0))
+    except Exception:
+        return 0.0
+
+
+def _risk_ok(entry: float, sl: float, lot: float, mt5_symbol: str) -> bool:
+    """True if a new position's $ risk (|entry-sl| * lot * contract_size) is within the cap.
+    Enforces the WMT $90/trade rule: a trade whose stop is too wide to size under the cap is SKIPPED."""
+    cap = _risk_cap()
+    if cap <= 0 or not sl:
+        return True
+    try:
+        import MetaTrader5 as mt5
+        info = mt5.symbol_info(mt5_symbol)
+        if info is None:
+            return True
+        return abs(entry - sl) * lot * info.trade_contract_size <= cap
+    except Exception:
+        return True
+
+
 class BaseStrategy:
     """One config slot. Subclasses implement `evaluate()`."""
 
@@ -691,6 +715,11 @@ class ZRevStrategy(BaseStrategy):
         if self.atr_stop_mult > 0 and self.use_sl and action in ("BUY", "SELL"):
             sl = self._atr_tighten(completed, forming, action, sl)
         lot = self._dynamic_lot(completed, forming, action) if action in ("BUY", "SELL") else self.lot
+        if action in ("BUY", "SELL") and action != prev:                # new entry / reversal -> risk cap
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            if not _risk_ok(float(forming["close"]), sl, lot, mt5_symbol):
+                logger.info(f"[{self.name}] risk cap: {action} stop too wide (> ${_risk_cap():.0f}) -> SKIP entry")
+                return self._emit("FLAT", 0.0, ts)
         return self._emit(action, sl, ts, lot)
 
     def _balance(self) -> float | None:
@@ -1177,6 +1206,10 @@ class GoldenStrategy(BaseStrategy):
             sl, tp = price + risk, price - self.tp_r * risk
         # regime-based lot: size up in the favorable low-ADX regime (else base lot)
         self._lot = self.lot_favorable if (self.regime_sizing and adx < self.size_adx_thresh) else self.lot
+        mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]     # per-trade risk cap ($90 WMT rule)
+        if not _risk_ok(price, sl, self._lot, mt5_symbol):
+            logger.info(f"[{self.name}] risk cap: {action} risk > ${_risk_cap():.0f} -> SKIP entry")
+            return self._emit("FLAT", 0.0, 0.0, ts)
         return self._emit(action, round(sl, 5), round(tp, 5), ts)
 
     # ---- indicators (match research/semi_marti_*.py exactly) ----
