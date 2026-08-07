@@ -1,4 +1,4 @@
-"""Signal engine: a pluggable registry of strategy "slots".
+﻿"""Signal engine: a pluggable registry of strategy "slots".
 
 Each slot in `config.yaml live.strategies` becomes one independent strategy that
 emits a desired-state `SignalResponse`. The server returns all slots for a symbol
@@ -8,7 +8,7 @@ the EA never changes.
 
 Idempotency: `action` is the position the slot *should hold*; `signal_id` is stable
 for the life of one signal. The EA acts only when `signal_id` changes, and the
-broker's SL/TP closes the trade (the EA won't reopen — the signal_id was acted on).
+broker's SL/TP closes the trade (the EA won't reopen â€” the signal_id was acted on).
 """
 import pandas as pd
 from loguru import logger
@@ -26,7 +26,7 @@ from .data import DataProvider
 _DUMMY_CYCLE = ["FLAT", "BUY", "FLAT", "SELL"]  # one phase per minute
 
 # --- Monthly Profit Governor gate (the 'bersyukur' rule). When _MONITOR/governor.json is paused,
-#     strategies may only HOLD or EXIT — no NEW entry (FLAT->BUY/SELL) and no reversal. Open
+#     strategies may only HOLD or EXIT â€” no NEW entry (FLAT->BUY/SELL) and no reversal. Open
 #     positions ride to their broker SL/TP. See pipeline/live/monthly_governor.py. ---
 import json as _json
 from pathlib import Path as _Path
@@ -247,7 +247,7 @@ class ORBStrategy(BaseStrategy):
         t = trades[0]
 
         # trend filter: only take the breakout if it agrees with the daily-SMA trend
-        # (skips counter-trend breakouts — the weaker side; FLAT on data error = fail-safe)
+        # (skips counter-trend breakouts â€” the weaker side; FLAT on data error = fail-safe)
         if trend_sma:
             tdir = self._trend_dir(int(trend_sma), today)
             if tdir == 0 or (tdir > 0) != (t.direction == "long"):
@@ -255,7 +255,7 @@ class ORBStrategy(BaseStrategy):
 
         # live outcome: once price has touched SL/TP the trade is OVER (matches the
         # backtest, which exits there). Without this the slot keeps emitting BUY/SELL
-        # all session — and if price has whipsawed past the SL, the EA spams the broker
+        # all session â€” and if price has whipsawed past the SL, the EA spams the broker
         # with an already-underwater stop ("invalid stops", err 10016).
         done = self._exit_hit(df, t, use_sl, breakeven_r)
         if done:
@@ -273,12 +273,12 @@ class ORBStrategy(BaseStrategy):
 
     def _exit_hit(self, df, t, use_sl, breakeven_r=None) -> str | None:
         """Has the live price touched the trade's SL/TP since entry? Returns the exit
-        reason ("SL"/"TP"/"BE") if the trade is over, else None — so the slot can go
+        reason ("SL"/"TP"/"BE") if the trade is over, else None â€” so the slot can go
         FLAT instead of chasing a finished (possibly stopped-out) trade.
 
         breakeven_r (optional): once price has run >= breakeven_r * risk in favour, the
         stop moves to ENTRY (0R). A retrace back to entry then exits at breakeven ("BE")
-        — a signal-driven exit (the slot emits FLAT; the EA closes). Validated to lift
+        â€” a signal-driven exit (the slot emits FLAT; the EA closes). Validated to lift
         the NAS 1:1 edge (OOS PF 1.33 -> 1.52). SL is checked before TP (pessimistic)."""
         post = df[df.index >= t.entry_ts]
         if post.empty:
@@ -376,7 +376,7 @@ class VisionStrategy(BaseStrategy):
     Same `() -> SignalResponse` contract as ORB, so SignalEngine treats it
     identically. Cadence-gated (the Claude call runs once per `interval_minutes`;
     every other poll serves the cached decision, preserving signal_id and thus EA
-    idempotency). FAIL-SAFE: evaluate() never raises — any error degrades to the
+    idempotency). FAIL-SAFE: evaluate() never raises â€” any error degrades to the
     cached decision or a safe FLAT, so vision can never 500 the server or break
     the ORB slots.
     """
@@ -388,13 +388,13 @@ class VisionStrategy(BaseStrategy):
         self.min_conf = int(p.get("min_confidence", 60))
         self.min_rr = float(p.get("min_rr", 1.5))
         # Reversing an OPEN position is a fresh entry against an existing trade, so
-        # it must clear a (>=) higher confidence bar than a plain open — hysteresis
+        # it must clear a (>=) higher confidence bar than a plain open â€” hysteresis
         # against flip-flopping on noise. Defaults to the entry bar (no extra gate).
         self.min_reverse_conf = int(p.get("min_reverse_confidence", self.min_conf))
         # Rule-based lock-profit reversal (NO Claude, runs every poll): once an open
         # position is in profit >= lock_min_profit_r, close it the moment price breaks
         # the swing of the last `reversal_lookback` completed `reversal_tf` bars
-        # against the trade — banks profit fast without burning tokens. Entry stays
+        # against the trade â€” banks profit fast without burning tokens. Entry stays
         # Claude's job; this is a cheap exit guard only.
         self.lock_profit = bool(p.get("lock_profit_reversal", False))
         self.lock_min_profit_r = float(p.get("lock_min_profit_r", 0.5))
@@ -415,7 +415,7 @@ class VisionStrategy(BaseStrategy):
         now_ts = pd.Timestamp.utcnow()
         now = now_ts.isoformat()
         try:
-            # 0. lock-profit reversal — rule-based, NO Claude, runs every poll. Only
+            # 0. lock-profit reversal â€” rule-based, NO Claude, runs every poll. Only
             #    acts on an in-profit open position; closes it on a structure flip so
             #    gains are banked before price retraces. Works off-hours/between
             #    Claude cycles, costs zero tokens.
@@ -423,13 +423,13 @@ class VisionStrategy(BaseStrategy):
             if locked is not None:
                 return locked
 
-            # 1. active-hours gate — outside the configured trading windows we
+            # 1. active-hours gate â€” outside the configured trading windows we
             #    never call Claude (zero tokens). Serve the cached decision so an
             #    already-open position is left for the broker SL/TP to manage.
             if not self._within_active_hours(now_ts):
                 return self.state.cached() or self._flat("OFFHOURS", now)
 
-            # 1. cadence gate — between intervals, serve the cached decision so
+            # 1. cadence gate â€” between intervals, serve the cached decision so
             #    signal_id is stable and the EA does nothing.
             if not self.state.due(self.interval):
                 return self.state.cached() or self._flat("BOOT", now)
@@ -456,7 +456,7 @@ class VisionStrategy(BaseStrategy):
             # 3. ENTRY/EXIT split (best practice: guards gate ENTRIES only). An
             #    already-open position is managed by the SL/TP set at entry and is
             #    closed ONLY on an explicit Claude FLAT or a guard-clearing,
-            #    high-confidence reversal — never force-closed by re-checking RR
+            #    high-confidence reversal â€” never force-closed by re-checking RR
             #    against the moving price, and its SL/TP are never widened mid-trade.
             prev = self.state.prev_action               # the position the slot holds now
             raw = decision.get("action", "FLAT")
@@ -477,7 +477,7 @@ class VisionStrategy(BaseStrategy):
                 if action == "FLAT":
                     return flat(self.name, self.symbol, self.magic, sig_id, now)
                 if is_hold and self.state.cached() is not None:
-                    sl, tp = self.state.cached().sl, self.state.cached().tp  # keep entry SL/TP — never widen
+                    sl, tp = self.state.cached().sl, self.state.cached().tp  # keep entry SL/TP â€” never widen
                 else:
                     sl, tp = round(float(decision["sl"]), 5), round(float(decision["tp"]), 5)
                 return SignalResponse(
@@ -489,7 +489,7 @@ class VisionStrategy(BaseStrategy):
             self.journal.record(self.symbol, self.name, png, decision,
                                 resp.signal_id, self.state.last_changed, self.archive_all)
             return resp
-        except Exception:                       # absolute backstop — never propagate
+        except Exception:                       # absolute backstop â€” never propagate
             logger.exception(f"[{self.name}] vision evaluate fatal")
             return self.state.cached() or self._flat("ERROR", now)
 
@@ -571,7 +571,7 @@ class VisionStrategy(BaseStrategy):
             return None
         try:
             pos = self._open_position()
-            if pos is None:                      # not filled yet, or already closed — don't act
+            if pos is None:                      # not filled yet, or already closed â€” don't act
                 return None
             if not self._reversal_hit(pos):
                 return None
@@ -635,7 +635,7 @@ class VisionStrategy(BaseStrategy):
 
 
 class ZRevStrategy(BaseStrategy):
-    """Z Strategy — always-in Donchian stop-and-reverse (validated XAU champion:
+    """Z Strategy â€” always-in Donchian stop-and-reverse (validated XAU champion:
     entry_n=100, exit_n=20, no filter). Same semantics as
     pipeline/backtest/strategy_zrev.simulate(): while flat, enter on a break of the
     entry channel (max/min of the last `entry_n` completed 1H bars); while in a
@@ -646,7 +646,7 @@ class ZRevStrategy(BaseStrategy):
     running high/low for the break, so entries fire near the channel level (matching
     the backtest fill). Idempotent via a per-slot counter -> `signal_id` changes only
     when the desired position changes. Exit is SIGNAL-driven (the server emits
-    FLAT/reverse as the trailing exit channel moves) — exactly like the backtest,
+    FLAT/reverse as the trailing exit channel moves) â€” exactly like the backtest,
     which has no fixed TP/SL. A protective broker SL is set at the exit-channel level
     as a server-downtime backstop only (set `use_sl: false` to send no stop).
 
@@ -674,7 +674,7 @@ class ZRevStrategy(BaseStrategy):
         # the counter-secular-trend trades that drive the drawdown (PF up, DD -23%).
         self.daily_filter = bool(p.get("daily_filter", False))
         self.daily_sma = int(p.get("daily_sma", 50))
-        # Optional THIRD gate — trend STRENGTH (not direction): only enter when the previous
+        # Optional THIRD gate â€” trend STRENGTH (not direction): only enter when the previous
         # completed DAILY Wilder ADX(adx_period) >= adx_min, i.e. gold is genuinely trending.
         # The other two gates say WHICH WAY; this one says WHETHER TO PLAY AT ALL. Validated
         # (research/regime_fix.py + final_1000.py, path-dependent equity from $1000):
@@ -682,7 +682,7 @@ class ZRevStrategy(BaseStrategy):
         # Cost is real: Z trades 549 -> 187 and Z only profits in trending years; ORB+Reversal
         # carry the chop. Chosen for LOWEST DD + only all-green setting, not for max profit.
         # 0 = off. Fail-safe: ADX unavailable -> 0.0 -> blocks new entries (same policy as
-        # _daily_trend). Gates entries AND reversals, never forces an exit — matches the
+        # _daily_trend). Gates entries AND reversals, never forces an exit â€” matches the
         # backtest, where an against-gate channel break exits to FLAT instead of reversing.
         self.adx_min = float(p.get("adx_min", 0.0))
         self.adx_period = int(p.get("adx_period", 14))
@@ -900,7 +900,7 @@ class ZRevStrategy(BaseStrategy):
         return direction
 
     def _daily_adx(self, now) -> float:
-        """Wilder ADX(adx_period) on COMPLETED daily bars — the forming day is dropped, which is
+        """Wilder ADX(adx_period) on COMPLETED daily bars â€” the forming day is dropped, which is
         the live equivalent of the backtest's .shift(1) (research/regime_fix.py: adx_daily). Daily
         bars from MT5 (D1), cached once/day. 0.0 (and any error) -> blocks NEW entries whenever
         adx_min > 0 (fail-safe, same policy as _daily_trend)."""
@@ -960,7 +960,7 @@ class ZRevStrategy(BaseStrategy):
 
 
 class MeanReversionStrategy(BaseStrategy):
-    """Mean-reversion (z-score fade) on H1 — validated XAU diversifier to Z
+    """Mean-reversion (z-score fade) on H1 â€” validated XAU diversifier to Z
     (OOS PF 2.7-3.2, 11/11 walk-forward, survives heavy cost, M1-fill confirmed).
 
     When the latest COMPLETED H1 close sits >= entry_z standard deviations from the
@@ -1067,7 +1067,7 @@ class MeanReversionStrategy(BaseStrategy):
 
 
 class LiquidityLimitStrategy(BaseStrategy):
-    """Liquidity Limit Strategy — Supertrend band 'limit' entries (validated XAU candidate,
+    """Liquidity Limit Strategy â€” Supertrend band 'limit' entries (validated XAU candidate,
     research/supertrend_long_xau.py + supertrend_validate13.py, broker-matched $13/$26 stop).
 
     In an UPTREND it holds a BUY at the continuously-updated Supertrend SUPPORT band and enters
@@ -1222,7 +1222,7 @@ class LiquidityLimitStrategy(BaseStrategy):
 
 
 class GoldenStrategy(BaseStrategy):
-    """Golden Strategy 1 — the rehabilitated Semi-Martingale EA SIGNAL (martingale stripped),
+    """Golden Strategy 1 â€” the rehabilitated Semi-Martingale EA SIGNAL (martingale stripped),
     validated XAU M5. Fades a normalized-MACD(5/13/9)+normalized-price extreme (both <= level_low
     -> BUY / both >= level_high -> SELL over `norm` bars) ONLY with the H1-EMA(ema_trend) trend, and
     STANDS ASIDE in over-extended trends (H1 ADX(adx_period) > adx_max). Market entry; broker-managed
@@ -1407,66 +1407,68 @@ class GoldenStrategy(BaseStrategy):
 
 # register new model types here; config `type:` selects one
 class EternaStrategy(BaseStrategy):
-    """Eterna — dual-Supertrend trend-follower on XAU H1, ENSEMBLE by vote.
+    """Eterna â€” dual-Supertrend trend-follower on XAU H1. ONE parameter set, no ensemble.
 
-    Derived from the third-party 'EA EternaBot V.2' (dual Supertrend), but deployed with
-    almost every EA default INVERTED, because research/eterna_*.py (12 phases, ~1600 configs
-    on 5.5y of XAUUSD 1m) showed the defaults lose:
-      - martingale OFF     (the EA's apparent accuracy WAS the martingale illusion; identical
-                            finding to research/semi_marti_signal.py, commit 62ea652)
-      - H1, not M1/M5      (EA recommends scalping; M1 = net -$22k, 0/6 green years)
-      - CONSERVATIVE mode  (enter only WITH the trend gate; picked 5/5 walk-forward windows)
-      - no trailing stop   (the EA's $7/$7 trail destroyed 70% of profit: $2136 -> $629)
-      - no breakeven / no partial TP / no SL buffer / no time exit / no hour filter
-        (all 10 structural variants tested made Ret/DD WORSE)
+    Derived from the third-party 'EA EternaBot V.2' (dual Supertrend), deployed with nearly
+    every EA default INVERTED, because research/eterna_*.py (20 phases, ~1900 configs on 5.5y
+    of XAUUSD 1m) showed the defaults lose money:
+      - martingale OFF     (the EA's apparent accuracy WAS the martingale illusion â€” same
+                            finding as research/semi_marti_signal.py, commit 62ea652)
+      - H1, not M1/M5      (EA recommends scalping; M5 lost -$21.7k, 97% red months)
+      - CONSERVATIVE gate  (enter only WITH the trend Supertrend; won 5/5 walk-forward windows
+                            while the numeric params changed 4/5 -> the edge is STRUCTURAL)
+      - no trailing / no breakeven / no partial TP / no SL buffer / no hour filter
+        (every structural variant tested made Ret/DD worse)
 
-    Signal: entry Supertrend(atr_period, mult_entry) FLIPS -> candidate direction; taken only
-    when the slower trend Supertrend(atr_period, mult_trend) agrees. SL = structure extreme of
-    the last `struct_bars` CLOSED bars; TP = tp_ratio x that risk. Broker SL/TP is the exit;
-    an opposite flip closes early.
+    Signal: entry Supertrend(atr_period, mult_entry) FLIPS on a CLOSED bar -> candidate
+    direction; taken only when Supertrend(atr_period, mult_trend) agrees. SL = extreme of the
+    last `struct_bars` CLOSED bars â€” the EA ties this lookback to ATR_Period (EA line 259:
+    `int bars = (int)ATR_Period;`), so struct_bars defaults to atr_period. TP = tp_ratio x that
+    risk. Broker SL/TP is the exit; an opposite flip closes early.
 
-    ENSEMBLE: `members` independent parameter sets each hold a notional position; the slot
-    trades the MAJORITY direction once net votes exceed `vote_threshold` (fraction of members).
-    TP ratio for the live order = median of the agreeing members.
+    Validated @ $1000, 0.01 lot, $0.50/trade (research/eterna_revalidate.py):
+      full 5.5y : net $2790, PF 1.57, maxDD -14.1%, 51%/yr, Ret/DD 3.63, 6/6 green years
+      2026 YTD  : net +$2159 (+216%), PF 2.69, maxDD -12.6%, WR 47%
+    atr_period 16 sits in the MIDDLE of a broad plateau (10..24 all healthy), which is why it
+    was chosen over the marginally different 14 or 20 â€” plateau centre beats plateau peak.
 
-    Validated (research/eterna_voting_live.py, $1000 @0.01 lot, $0.50/trade):
-      portfolio-of-32 form  net $1587, PF 1.34, maxDD -$283, Ret/DD 1.02, 5/6 green
-      VOTING form (deployed) net $2037, PF 1.26, maxDD -$568, Ret/DD 0.65, 6/6 green
-    The voting form earns MORE but draws down ~2x, because a fractional portfolio scales its
-    exposure with agreement while a single min-lot position cannot. **maxDD -$568 is 57% of a
-    $1000 account** — this slot wants ~$2300 before real money. Demo/paper first.
+    THINGS THE OPERATOR MUST KNOW (research/eterna_concentration.py):
+      - Profit is EXTREMELY concentrated: the 10 best trades (1.7%) produce 85% of all profit;
+        the MEDIAN trade LOSES $4.67 and win-rate is only 37%. Miss the 5 best trades and 58%
+        of the profit is gone. THE SLOT MUST BE LEFT RUNNING through flat months.
+      - Monthly PnL is NOT smooth and cannot be made smooth: lowering TP to 1:1 evens the curve
+        but cuts net by 70% and does NOT raise the share of green months (44% vs 53%).
+      - ~47% of months are red; longest red streak 5 months.
+      - 91% of backtest profit came from 2024-2026 (gold trending). Block-bootstrap over the
+        flat 2021-2023 regime: P(loss) 33.6%. In a flat regime it survives, it does not earn.
+      - Single trades have risked up to 33% of a $1000 account (median 5.6%). The structure
+        stop widens with volatility and 0.01 is the minimum lot, so on a small account the only
+        control is to SKIP the trade â€” that is what `_risk_ok()` does.
 
-    Honest caveat: 91% of the backtest profit came from 2024-2026 (gold trending). A
-    block-bootstrap over the flat 2021-2023 regime gives P(loss) 33.6%, median only +$103.
-    The edge is real but needs gold to move; in a flat regime it survives, it does not earn.
-
-    Restart-robust: member states are REPLAYED from bar history on every new H1 bar (same
-    pattern as liquidity_manager), so a restart reconstructs the identical vote. One position.
+    Restart-safe: `_reconcile()` runs every poll â€” it adopts an existing MT5 position on the
+    first pass and afterwards detects a broker SL/TP close, so the brain never thinks it holds
+    a position the broker already closed. One position at a time.
     """
 
     def __init__(self, spec: dict, cfg: dict, data: DataProvider):
         super().__init__(spec, cfg, data)
         p = spec.get("params", {})
         self.timeframe = str(p.get("timeframe", "1h"))
-        self.atr_periods = [int(x) for x in p.get("atr_periods", [7, 10, 14, 20])]
-        self.mult_entries = [float(x) for x in p.get("mult_entries", [1.8, 2.5])]
-        self.mult_trends = [float(x) for x in p.get("mult_trends", [3.8, 5.0])]
-        self.tp_ratios = [float(x) for x in p.get("tp_ratios", [3.0, 4.0])]
-        self.struct_bars = int(p.get("struct_bars", 20))
-        self.vote_threshold = float(p.get("vote_threshold", 0.15))
-        self.min_sl_dist = float(p.get("min_sl_dist", 0.50))
-        self.history_bars = int(p.get("history_bars", 60000))   # ~1000 H1 bars from M1
-        self.members = [(a, me, mt, tp) for a in self.atr_periods
-                        for me in self.mult_entries
-                        for mt in self.mult_trends
-                        for tp in self.tp_ratios]
+        self.atr_period = int(p.get("atr_period", 16))
+        self.mult_entry = float(p.get("mult_entry", 1.8))
+        self.mult_trend = float(p.get("mult_trend", 3.8))
+        # EA line 259 ties the structure lookback to ATR_Period; keep them tied by default.
+        self.struct_bars = int(p.get("struct_bars", self.atr_period))
+        self.tp_ratio = float(p.get("tp_ratio", 4.0))
+        self.min_sl_dist = float(p.get("min_sl_dist", 0.30))
+        self.history_bars = int(p.get("history_bars", 30000))   # ~500 H1 bars from M1
         self._prev_action = "FLAT"
         self._counter = 0
         self._sl = 0.0
         self._tp = 0.0
         self._last_bar_ts = None
         self._cached: SignalResponse | None = None
-        self._reconciled = False
+        self._adopted = False
 
     # ---------- indicators ----------
     @staticmethod
@@ -1476,9 +1478,10 @@ class EternaStrategy(BaseStrategy):
                         (df["low"] - pc).abs()], axis=1).max(axis=1)
         return tr.ewm(alpha=1.0 / n, adjust=False, min_periods=n).mean()
 
-    def _supertrend(self, df: pd.DataFrame, period: int, mult: float):
-        """+1 uptrend / -1 downtrend per bar (standard Supertrend)."""
-        a = self._atr(df, period)
+    def _supertrend(self, df: pd.DataFrame, mult: float) -> list:
+        """+1 uptrend / -1 downtrend per bar (standard Supertrend, Wilder ATR)."""
+        import math
+        a = self._atr(df, self.atr_period)
         hl2 = (df["high"] + df["low"]) / 2.0
         up = (hl2 + mult * a).to_numpy()
         lo = (hl2 - mult * a).to_numpy()
@@ -1487,7 +1490,6 @@ class EternaStrategy(BaseStrategy):
         fu = [float("nan")] * n
         fl = [float("nan")] * n
         d = [1] * n
-        import math
         for i in range(1, n):
             if math.isnan(up[i]) or math.isnan(lo[i]):
                 continue
@@ -1501,66 +1503,6 @@ class EternaStrategy(BaseStrategy):
                 d[i] = d[i-1]
         return d
 
-    # ---------- ensemble vote ----------
-    def _vote(self, h: pd.DataFrame):
-        """Replay every member over closed bars -> (net_votes, n_members, median_tp_ratio).
-
-        Anti-lookahead (the bug that killed Golden): the entry signal and the trend gate are
-        BOTH read with a one-bar lag, and the structure stop uses only bars before entry.
-        """
-        import math
-        sts = {}
-        for a in self.atr_periods:
-            for m in set(self.mult_entries) | set(self.mult_trends):
-                sts[(a, m)] = self._supertrend(h, a, m)
-
-        o = h["open"].to_numpy()
-        hi = h["high"].to_numpy()
-        lo = h["low"].to_numpy()
-        slo = h["low"].rolling(self.struct_bars).min().shift(1).to_numpy()
-        shi = h["high"].rolling(self.struct_bars).max().shift(1).to_numpy()
-        n = len(h)
-
-        longs = shorts = 0
-        agree_tps = []
-        for (a, me, mt, tpr) in self.members:
-            se, st = sts[(a, me)], sts[(a, mt)]
-            pos = 0
-            entry = sl = tp = 0.0
-            for i in range(2, n):        # from 2: se[i-2] must exist for flip detection
-                if pos != 0:
-                    hit = None
-                    if pos == 1:
-                        hit = sl if lo[i] <= sl else (tp if hi[i] >= tp else None)
-                    else:
-                        hit = sl if hi[i] >= sl else (tp if lo[i] <= tp else None)
-                    if hit is not None:
-                        pos = 0
-                # entry signal = the entry Supertrend FLIPPED on the previous (closed) bar
-                if se[i-1] == se[i-2]:
-                    continue            # no flip -> nothing to act on this bar
-                s = se[i-1]
-                if pos == -s:
-                    pos = 0
-                if pos != 0 or st[i-1] != s:
-                    continue
-                raw = slo[i] if s == 1 else shi[i]
-                if raw is None or math.isnan(raw):
-                    continue
-                dist = abs(o[i] - raw)
-                if dist < self.min_sl_dist:
-                    continue
-                pos, entry = s, o[i]
-                sl = entry - dist if s == 1 else entry + dist
-                tp = entry + tpr * dist if s == 1 else entry - tpr * dist
-            if pos == 1:
-                longs += 1
-                agree_tps.append((1, tpr))
-            elif pos == -1:
-                shorts += 1
-                agree_tps.append((-1, tpr))
-        return longs, shorts, agree_tps
-
     # ---------- main ----------
     def evaluate(self) -> SignalResponse:
         now = pd.Timestamp.utcnow()
@@ -1569,91 +1511,101 @@ class EternaStrategy(BaseStrategy):
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
             return self._emit("FLAT", 0.0, 0.0, ts)
-        h = self._resample(df)
-        if len(h) < max(self.atr_periods) + self.struct_bars + 5:
-            return self._emit("FLAT", 0.0, 0.0, ts)            # warming up
+        h = df.resample(self.timeframe, label="left", closed="left").agg(
+            {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        if len(h) < self.atr_period + self.struct_bars + 5:
+            return self._emit("FLAT", 0.0, 0.0, ts)                 # warming up
 
         cur = now.floor(self.timeframe)
-        h_c = h.iloc[:-1] if (h.index[-1] == cur and len(h) > 1) else h   # closed bars only
+        h_c = h.iloc[:-1] if (h.index[-1] == cur and len(h) > 1) else h   # CLOSED bars only
         bar_ts = h_c.index[-1]
         if self._cached is not None and bar_ts == self._last_bar_ts:
-            return self._cached                                 # one decision per H1 bar
+            return self._cached                                     # one decision per H1 bar
         self._last_bar_ts = bar_ts
 
-        longs, shorts, agree = self._vote(h_c)
-        total = len(self.members)
-        net = longs - shorts
-        need = self.vote_threshold * total
-        want = "BUY" if net >= need else ("SELL" if net <= -need else "FLAT")
-        logger.info(f"[{self.name}] vote long={longs} short={shorts} net={net} "
-                    f"(need {need:.1f}/{total}) -> {want}")
+        st_e = self._supertrend(h_c, self.mult_entry)
+        st_t = self._supertrend(h_c, self.mult_trend)
+        if len(st_e) < 2:
+            return self._emit("FLAT", 0.0, 0.0, ts)
 
-        if want == "FLAT":
-            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
-            return self._cached
-        if want == self._prev_action:
-            self._cached = self._emit(want, self._sl, self._tp, ts)   # hold, same signal_id
-            return self._cached
+        flipped = st_e[-1] != st_e[-2]          # entry Supertrend flipped on the last CLOSED bar
+        s = st_e[-1]
+        aligned = st_t[-1] == s
+        side = "BUY" if s == 1 else "SELL"
 
-        d = 1 if want == "BUY" else -1
+        # opposite signal closes an open position, exactly like the backtest
+        if self._prev_action in ("BUY", "SELL") and flipped and side != self._prev_action:
+            logger.info(f"[{self.name}] opposite flip -> close {self._prev_action}")
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        if self._prev_action in ("BUY", "SELL"):
+            return self._emit(self._prev_action, self._sl, self._tp, ts)   # hold; broker exits
+        if not flipped or not aligned:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
         px = float(h_c["close"].iloc[-1])
-        window = h_c.iloc[-(self.struct_bars + 1):-1]
-        raw = float(window["low"].min()) if d == 1 else float(window["high"].max())
+        window = h_c.iloc[-self.struct_bars:]      # last N CLOSED bars (entry bar excluded)
+        raw = float(window["low"].min()) if s == 1 else float(window["high"].max())
         dist = abs(px - raw)
         if dist < self.min_sl_dist:
-            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
-            return self._cached
-        tprs = [t for s, t in agree if s == d] or [3.5]
-        tpr = float(pd.Series(tprs).median())
-        sl = px - dist if d == 1 else px + dist
-        tp = px + tpr * dist if d == 1 else px - tpr * dist
+            logger.info(f"[{self.name}] structure stop too tight ({dist:.2f}) -> skip")
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        sl = px - dist if s == 1 else px + dist
+        tp = px + self.tp_ratio * dist if s == 1 else px - self.tp_ratio * dist
 
-        if _book_conflict(self.cfg["symbols"][self.symbol]["mt5_symbol"], want, self.magic):
-            logger.info(f"[{self.name}] net-exposure guard: another book slot already {want}")
-            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
-            return self._cached
-        if not _risk_ok(px, sl, float(self.lot), self.cfg["symbols"][self.symbol]["mt5_symbol"]):
+        mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+        if _book_conflict(mt5_symbol, side, self.magic):
+            logger.info(f"[{self.name}] net-exposure guard: another slot already {side}")
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        if not _risk_ok(px, sl, float(self.lot), mt5_symbol):
             logger.info(f"[{self.name}] risk cap: stop too wide ({dist:.2f}) -> skip")
-            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
-            return self._cached
+            return self._emit("FLAT", 0.0, 0.0, ts)
 
-        self._cached = self._emit(want, sl, tp, ts)
-        return self._cached
-
-    def _resample(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.resample(self.timeframe, label="left", closed="left").agg(
-            {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        logger.info(f"[{self.name}] {side} @ {px:.2f} sl={sl:.2f} tp={tp:.2f} "
+                    f"risk=${dist * float(self.lot) * 100:.2f}")
+        return self._emit(side, sl, tp, ts)
 
     def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:
-        action = _governed(action, self._prev_action)       # monthly profit governor gate
+        action = _governed(action, self._prev_action)        # monthly profit governor gate
         if action != self._prev_action:
             self._counter += 1
             self._prev_action, self._sl, self._tp = action, sl, tp
         if action == "FLAT":
-            return self._flat(str(self._counter), ts)
-        return SignalResponse(
-            strategy=self.name, symbol=self.symbol, action=action,
-            sl=round(self._sl, 3), tp=round(self._tp, 3), lot=float(self.lot),
-            magic=self.magic, signal_id=f"{self.symbol}-{self.name}-{self._counter}", ts=ts,
-        )
+            self._cached = self._flat(str(self._counter), ts)
+        else:
+            self._cached = SignalResponse(
+                strategy=self.name, symbol=self.symbol, action=action,
+                sl=round(self._sl, 3), tp=round(self._tp, 3), lot=float(self.lot),
+                magic=self.magic, signal_id=f"{self.symbol}-{self.name}-{self._counter}", ts=ts,
+            )
+        return self._cached
 
     def _reconcile(self) -> None:
-        """Adopt/forget the live MT5 position once, so a restart never double-opens."""
-        if self._reconciled:
-            return
+        """Every poll: adopt an existing position, and notice when the broker closed one.
+
+        Without this the brain would keep believing it holds a position that the broker's
+        SL/TP already closed, and would never take the next entry.
+        """
         try:
             import MetaTrader5 as mt5
             mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
-            for p in (mt5.positions_get(symbol=mt5_symbol) or []):
-                if p.magic == self.magic:
-                    self._prev_action = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
-                    self._sl, self._tp = float(p.sl), float(p.tp)
-                    logger.info(f"[{self.name}] adopted live position {self._prev_action} "
+            mine = [p for p in (mt5.positions_get(symbol=mt5_symbol) or [])
+                    if p.magic == self.magic]
+            if mine:
+                p = mine[0]
+                act = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
+                if not self._adopted or act != self._prev_action:
+                    self._prev_action, self._sl, self._tp = act, float(p.sl), float(p.tp)
+                    logger.info(f"[{self.name}] adopted live position {act} "
                                 f"sl={p.sl} tp={p.tp}")
-                    break
+            elif self._prev_action in ("BUY", "SELL"):
+                logger.info(f"[{self.name}] broker closed {self._prev_action} "
+                            f"(SL/TP hit) -> flat")
+                self._prev_action, self._sl, self._tp = "FLAT", 0.0, 0.0
+                self._counter += 1
+                self._cached = None
+            self._adopted = True
         except Exception as e:
             logger.warning(f"[{self.name}] reconcile skipped ({e})")
-        self._reconciled = True
 
 
 STRATEGY_TYPES = {
@@ -1664,7 +1616,7 @@ STRATEGY_TYPES = {
     "mr": MeanReversionStrategy, # Mean-reversion z-score fade (diversifier)
     "liqlimit": LiquidityLimitStrategy,  # Liquidity Limit (Supertrend band 'limit' entries)
     "golden": GoldenStrategy,    # Golden Strategy 1 (fade-with-trend M5 XAU + ADX skip)
-    "eterna": EternaStrategy,    # Eterna (dual-Supertrend H1 XAU, ensemble by vote)
+    "eterna": EternaStrategy,    # Eterna (dual-Supertrend H1 XAU, conservative gate, TP 1:4)
 }
 
 

@@ -1,4 +1,4 @@
-project:
+﻿project:
   name: ORB_Research
   version: "1.0"
 
@@ -113,7 +113,7 @@ live:
   # `type` picks the engine (dummy | orb | <future model>); the EA never changes.
   # Give every slot a UNIQUE magic so positions never collide.
   strategies:
-    - name: orb30_nas        # NAS100 — REPRODUCED 2026-06-28 (full live logic, M1 fill):
+    - name: orb30_nas        # NAS100 â€” REPRODUCED 2026-06-28 (full live logic, M1 fill):
                              #   OOS PF 1.40, IS 1.28, 6/6 thn hijau, MC 5th-pct 1.04, 0% order invalid.
                              #   Edge nyata tapi TIPIS (exp ~0.08R). Klaim lama "1.52" sedikit optimis.
       enabled: false         # 2026-07-04: EA market-slot OFF. The orb_stop_manager (brain-side) owns a
@@ -141,7 +141,7 @@ live:
         manager_poll_seconds: 10  # poll cadence (place the stop promptly at range_end; manage BE/exit)
         dry_run: false            # 2026-07-04 LIVE on demo: places REAL pending STOP orders. (true = log-only.)
 
-    - name: liquidity_limit_strategy   # Liquidity Limit — Supertrend band 'limit' entries (BOTH sides)
+    - name: liquidity_limit_strategy   # Liquidity Limit â€” Supertrend band 'limit' entries (BOTH sides)
       enabled: false        # RETIRED 2026-07-08: weakest edge (PF 1.33, 2022 negative) and the main
                             #   bleeder in the gold downtrend. User simplified to ONE strategy per
                             #   commodity: Z=XAU, ORB=NQ. liquidity_manager process STOPPED, its pending
@@ -183,7 +183,7 @@ live:
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
       enabled: false        # OFF 2026-08-06: dimatikan user saat rebuild VPS (menuju strategi 'eterna').
                             #   Reversible: set true + restart brain. Riwayat alasan lama di bawah.
-                            # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) — the
+                            # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) â€” the
                             #   FULL book Z+NAS+LIQ (OOS-PF 1.87, net +$4685) needs its main engine back;
                             #   NAS+LIQ alone was the weakest combo (OOS 1.56, negative 2022). User chose FULL.
       type: zrev            #   2026-06-29 audit (entry20/exit20 = always-in): IS PF 1.09, OOS 1.58,
@@ -245,14 +245,14 @@ live:
         daily_sma: 50
         history_bars: 15000 # ~250 jam = ~62 bar 4H (cukup utk EMA50+channel; kecil biar /signals cepat)
 
-    - name: golden_xau      # Golden Strategy 1 — rehabilitated Semi-Marti EA signal (martingale stripped)
-      enabled: false        # DISABLED 2026-07-17 (research/golden_check.py + book_1000_full.py) — ARTIFACT,
+    - name: golden_xau      # Golden Strategy 1 â€” rehabilitated Semi-Marti EA signal (martingale stripped)
+      enabled: false        # DISABLED 2026-07-17 (research/golden_check.py + book_1000_full.py) â€” ARTIFACT,
                             #   bukan edge. Sama kelasnya dengan mr_xau. Semua riset Golden (semi_marti_*.py,
                             #   regime_adaptive.py, regime_sizing.py) me-reindex gate H1 ke M5 dengan ffill
                             #   TANPA shift: `adx(h1).reindex(idx5, method="ffill")` dan `t15 = np.sign(...)
                             #   .reindex(idx5, method="ffill")`. resample("1h") berlabel AWAL bar, jadi bar
                             #   10:00 (isi data s/d 10:59) sudah kepakai di M5 10:05 => LOOKAHEAD s/d 55 menit
-                            #   pada trend-gate + ADX-gate. ATR M5 di file yang sama di-.shift(1) (benar) —
+                            #   pada trend-gate + ADX-gate. ATR M5 di file yang sama di-.shift(1) (benar) â€”
                             #   gate H1-nya yang kelewat. Padahal sinyal mentahnya RUGI; dua gate itulah
                             #   seluruh "edge" => edge = lookahead-nya.
                             #   Setelah gate di-shift +1h (jujur): PF 2.14 -> 1.04, WR 26%, 6/6 -> 3/6 hijau
@@ -291,9 +291,9 @@ live:
                             #   Risk-capped $90/trade (fail-closed). WMT used 0.04/0.02.
         history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
 
-    # (2026-07-09 dummy_wmt EA-loop test PASSED — brain->EA->WMT execution proven; slot removed.)
+    # (2026-07-09 dummy_wmt EA-loop test PASSED â€” brain->EA->WMT execution proven; slot removed.)
 
-    # DISABLED 2026-06-28 (audit) — ARTIFACT, bukan edge. magic 920623.
+    # DISABLED 2026-06-28 (audit) â€” ARTIFACT, bukan edge. magic 920623.
     # Re-audit (research/audit_live_strategies.py, _DOC/audit_2026-06-28.md) menemukan:
     # entry_z 2.5 < stop_z 3.0 berarti SETIAP sinyal dengan |z| >= 3.0 punya SL di sisi
     # SALAH dari entry (BUY: SL >= entry; SELL: SL <= entry) -> order DITOLAK broker live.
@@ -314,28 +314,45 @@ live:
     #     history_bars: 6000
 
     # =================================================================================
-    # ETERNA — dual-Supertrend XAU H1, ENSEMBLE 32 anggota by vote (magic 920627).
+    # ETERNA â€” dual-Supertrend XAU H1, SATU set parameter (magic 920627).
     # Diturunkan dari EA pihak ketiga 'EA EternaBot V.2' (TikTok @reeztradefx), TAPI
     # hampir SEMUA default EA-nya DIBALIK, karena riset kami (research/eterna_*.py,
-    # 13 fase, ~1600 konfigurasi di XAUUSD 1m 5,5 tahun) membuktikan default-nya rugi:
+    # 20 fase, ~1900 konfigurasi di XAUUSD 1m 5,5 tahun) membuktikan default-nya rugi:
     #   - martingale MATI  : "akurasi" EA itu ilusi martingale (identik temuan
     #                        research/semi_marti_signal.py, commit 62ea652)
-    #   - H1, bukan M1/M5  : EA menyarankan scalping; M1 = net -$22rb, 0/6 tahun hijau
-    #   - mode KONSERVATIF : entry hanya searah gate tren; terpilih 5/5 jendela walk-forward
-    #   - TANPA trailing   : trailing bawaan EA ($7/$7) memusnahkan 70% profit ($2136->$629)
-    #   - TANPA breakeven / partial TP / buffer SL / time exit / filter jam
-    #                        (10 varian struktural diuji, SEMUA memperburuk Ret/DD)
-    # Walk-forward: ensemble TETAP $2126 vs optimasi-ulang-tiap-tahun $1258 -> JANGAN
-    # pernah menyetel ulang parameter ini. Edge ada di struktur, bukan di angkanya.
+    #   - H1, bukan M1/M5  : EA menyarankan scalping; M5 rugi -$21.700, 97% bulan merah
+    #   - gate KONSERVATIF : entry hanya searah Supertrend tren. Menang 5/5 jendela
+    #                        walk-forward sementara angka parameternya berubah 4/5
+    #                        -> edge-nya STRUKTURAL, bukan di angkanya
+    #   - TANPA trailing / breakeven / partial TP / buffer SL / filter jam
+    #                        (semua varian struktural yang diuji memperburuk Ret/DD)
     #
-    # Angka bentuk VOTING (yang di-deploy) @modal $1000 lot 0.01 biaya $0.50:
-    #   net $2037, PF 1.26, maxDD -$568, Ret/DD 0.65, 6/6 tahun hijau, 45% bulan merah.
-    # PERINGATAN: maxDD -$568 = 57% dari akun $1000. Slot ini butuh ~$2300 sebelum uang
-    # nyata. Bentuk portofolio-32 (tak bisa live, lot minimum) maxDD-nya cuma -$283.
-    # CAVEAT: 91% profit backtest dari 2024-2026 (emas trending). Monte Carlo di regime
-    # datar 2021-2023: P(rugi) 33,6%, median cuma +$103 -> saat emas datar dia BERTAHAN
-    # HIDUP, bukan menghasilkan. JANGAN harapkan profit tiap bulan (merah beruntun 5 bulan).
-    # DEMO/paper dulu: verifikasi sinyal live == sinyal backtest sebelum dipercaya.
+    # SL = ekstrem `struct_bars` bar TERTUTUP. EA mengikat lookback ini ke ATR_Period
+    # (EA baris 259: `int bars = (int)ATR_Period;`) -> struct_bars = atr_period.
+    # CATATAN: versi awal slot ini keliru memakai struct_bars 20 tetap; itu membuat SL
+    # 2-3x lebih lebar dari maksud EA dan menaikkan maxDD dari 14% ke 28%. Sudah dikoreksi.
+    #
+    # atr_period 16 dipilih karena ada di TENGAH plateau (10..24 semuanya sehat), bukan
+    # karena angkanya paling tinggi. Pusat dataran lebih dipercaya daripada puncaknya.
+    #
+    # Tervalidasi @modal $1000 lot 0.01 biaya $0.50 (research/eterna_revalidate.py):
+    #   5,5 tahun : net $2790, PF 1.57, maxDD -14,1%, 51%/thn, Ret/DD 3.63, 6/6 thn hijau
+    #   2026 YTD  : net +$2159 (+216%), PF 2.69, maxDD -12,6%, WR 47%
+    #
+    # ---- YANG WAJIB DIKETAHUI OPERATOR (research/eterna_concentration.py) ----
+    # * Profit SANGAT terkonsentrasi: 10 trade terbaik (1,7%) = 85% seluruh profit.
+    #   Trade MEDIAN RUGI $4,67 dan win-rate cuma 37%. Melewatkan 5 trade terbaik saja
+    #   menghapus 58% profit. SLOT INI HARUS DIBIARKAN JALAN, termasuk di bulan datar.
+    # * Bulanan TIDAK rata dan TIDAK BISA diratakan: menurunkan TP ke 1:1 memang
+    #   memuluskan kurva tapi memangkas net 70% DAN tidak menaikkan porsi bulan hijau
+    #   (44% vs 53%). Jangan tukar profit demi grafik yang terlihat tenang.
+    # * ~47% bulan merah; merah beruntun terpanjang 5 bulan.
+    # * 91% profit backtest dari 2024-2026 (emas trending). Block-bootstrap di regime
+    #   datar 2021-2023: P(rugi) 33,6% -> saat emas datar dia BERTAHAN HIDUP, bukan
+    #   menghasilkan. JANGAN harapkan profit tiap bulan.
+    # * Satu trade pernah mempertaruhkan 33% akun $1000 (median 5,6%). SL struktur
+    #   melebar saat volatilitas naik dan 0.01 adalah lot minimum, jadi satu-satunya
+    #   kendali di akun kecil adalah MELEWATI trade itu -> governor.max_risk_per_trade.
     # =================================================================================
     - name: eterna_xau
       enabled: false        # OFF sampai shadow-check di demo bersih. Set true + restart brain.
@@ -345,20 +362,20 @@ live:
       magic: 920627         # UNIK (920617=NQ ORB, 920622=Z, 920626=Golden, 920633=Reversal)
       params:
         timeframe: "1h"
-        atr_periods: [7, 10, 14, 20]     # plateau: keempatnya sehat, jangan dipangkas
-        mult_entries: [1.8, 2.5]         # Supertrend entry
-        mult_trends: [3.8, 5.0]          # Supertrend gate tren (yang bikin mode konservatif)
-        tp_ratios: [3.0, 4.0]            # TP = rasio x jarak SL; median anggota yg setuju dipakai
-        struct_bars: 20                  # SL = ekstrem 20 bar TERTUTUP (dinamis, bukan poin tetap)
-        vote_threshold: 0.15             # butuh 15% suara BERSIH (~5 dari 32) untuk membuka
-        min_sl_dist: 0.50                # tolak SL < $0.50 (bar terlalu sempit)
-        history_bars: 60000              # ~1000 bar H1 untuk replay state anggota (tahan restart)
-
+        atr_period: 16      # ATR Supertrend; juga jadi lookback struktur SL (seperti EA)
+        mult_entry: 1.8     # Supertrend entry. CATATAN: ini SPIKE, bukan plateau â€”
+                            #   tetangganya (1.6 -> Ret/DD 1.75, 2.0 -> 1.95) jauh lebih
+                            #   buruk. Satu-satunya parameter yang belum bisa dijelaskan
+                            #   kenapa istimewa; perlakukan sebagai titik lemah riset ini.
+        mult_trend: 3.8     # Supertrend gate tren -> inilah "mode konservatif"-nya
+        tp_ratio: 4.0       # TP = 4 x jarak SL. Plateau 1:3..1:5 semuanya sehat.
+        min_sl_dist: 0.30   # tolak SL < $0.30 (bar terlalu sempit)
+        history_bars: 30000 # ~500 bar H1 dari M1
     # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
     # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
     # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
     # REPLACED by the SHADOW ADVISOR (see `advisor:` block below + pipeline/live/advisor.py):
-    # LLM no longer DECIDES — it captures the chart + macro/micro context at each REAL brain
+    # LLM no longer DECIDES â€” it captures the chart + macro/micro context at each REAL brain
     # entry and logs a CONFIRM/CAUTION verdict ALONGSIDE the outcome, blocking nothing. After
     # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
     # let it filter. Honest forward-test, zero risk to the validated edge.
@@ -368,9 +385,9 @@ vision:
   journal_path: "vision_journal.jsonl"
   archive_dir: "_DOC/vision"
 
-# SHADOW ADVISOR (pipeline/live/advisor.py) — separate read-only process. On each NEW brain
+# SHADOW ADVISOR (pipeline/live/advisor.py) â€” separate read-only process. On each NEW brain
 # entry (matched by magic) it captures the chart, asks Claude for a macro/micro CONFIRM/CAUTION
-# read, and logs it next to the trade. It NEVER places/blocks/sizes an order — pure insight.
+# read, and logs it next to the trade. It NEVER places/blocks/sizes an order â€” pure insight.
 # Run via START_ADVISOR.bat. Evaluate later with research/advisor_eval.py.
 advisor:
   enabled: true
@@ -389,7 +406,7 @@ advisor:
     - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
     - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
 
-# MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) — the 'bersyukur' rule. Once month-to-
+# MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-
 # date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries
 # for the rest of the month (open positions ride). Resets on the 1st. Writes _MONITOR/governor.json,
 # read by the brain (Z+Golden) and the ORB manager. Run via START_GOVERNOR.bat.
