@@ -313,6 +313,47 @@ live:
     #     max_hold_hours: 48
     #     history_bars: 6000
 
+    # =================================================================================
+    # ETERNA — dual-Supertrend XAU H1, ENSEMBLE 32 anggota by vote (magic 920627).
+    # Diturunkan dari EA pihak ketiga 'EA EternaBot V.2' (TikTok @reeztradefx), TAPI
+    # hampir SEMUA default EA-nya DIBALIK, karena riset kami (research/eterna_*.py,
+    # 13 fase, ~1600 konfigurasi di XAUUSD 1m 5,5 tahun) membuktikan default-nya rugi:
+    #   - martingale MATI  : "akurasi" EA itu ilusi martingale (identik temuan
+    #                        research/semi_marti_signal.py, commit 62ea652)
+    #   - H1, bukan M1/M5  : EA menyarankan scalping; M1 = net -$22rb, 0/6 tahun hijau
+    #   - mode KONSERVATIF : entry hanya searah gate tren; terpilih 5/5 jendela walk-forward
+    #   - TANPA trailing   : trailing bawaan EA ($7/$7) memusnahkan 70% profit ($2136->$629)
+    #   - TANPA breakeven / partial TP / buffer SL / time exit / filter jam
+    #                        (10 varian struktural diuji, SEMUA memperburuk Ret/DD)
+    # Walk-forward: ensemble TETAP $2126 vs optimasi-ulang-tiap-tahun $1258 -> JANGAN
+    # pernah menyetel ulang parameter ini. Edge ada di struktur, bukan di angkanya.
+    #
+    # Angka bentuk VOTING (yang di-deploy) @modal $1000 lot 0.01 biaya $0.50:
+    #   net $2037, PF 1.26, maxDD -$568, Ret/DD 0.65, 6/6 tahun hijau, 45% bulan merah.
+    # PERINGATAN: maxDD -$568 = 57% dari akun $1000. Slot ini butuh ~$2300 sebelum uang
+    # nyata. Bentuk portofolio-32 (tak bisa live, lot minimum) maxDD-nya cuma -$283.
+    # CAVEAT: 91% profit backtest dari 2024-2026 (emas trending). Monte Carlo di regime
+    # datar 2021-2023: P(rugi) 33,6%, median cuma +$103 -> saat emas datar dia BERTAHAN
+    # HIDUP, bukan menghasilkan. JANGAN harapkan profit tiap bulan (merah beruntun 5 bulan).
+    # DEMO/paper dulu: verifikasi sinyal live == sinyal backtest sebelum dipercaya.
+    # =================================================================================
+    - name: eterna_xau
+      enabled: false        # OFF sampai shadow-check di demo bersih. Set true + restart brain.
+      type: eterna
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920627         # UNIK (920617=NQ ORB, 920622=Z, 920626=Golden, 920633=Reversal)
+      params:
+        timeframe: "1h"
+        atr_periods: [7, 10, 14, 20]     # plateau: keempatnya sehat, jangan dipangkas
+        mult_entries: [1.8, 2.5]         # Supertrend entry
+        mult_trends: [3.8, 5.0]          # Supertrend gate tren (yang bikin mode konservatif)
+        tp_ratios: [3.0, 4.0]            # TP = rasio x jarak SL; median anggota yg setuju dipakai
+        struct_bars: 20                  # SL = ekstrem 20 bar TERTUTUP (dinamis, bukan poin tetap)
+        vote_threshold: 0.15             # butuh 15% suara BERSIH (~5 dari 32) untuk membuka
+        min_sl_dist: 0.50                # tolak SL < $0.50 (bar terlalu sempit)
+        history_bars: 60000              # ~1000 bar H1 untuk replay state anggota (tahan restart)
+
     # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
     # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
     # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.

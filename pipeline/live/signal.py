@@ -1406,6 +1406,256 @@ class GoldenStrategy(BaseStrategy):
 
 
 # register new model types here; config `type:` selects one
+class EternaStrategy(BaseStrategy):
+    """Eterna — dual-Supertrend trend-follower on XAU H1, ENSEMBLE by vote.
+
+    Derived from the third-party 'EA EternaBot V.2' (dual Supertrend), but deployed with
+    almost every EA default INVERTED, because research/eterna_*.py (12 phases, ~1600 configs
+    on 5.5y of XAUUSD 1m) showed the defaults lose:
+      - martingale OFF     (the EA's apparent accuracy WAS the martingale illusion; identical
+                            finding to research/semi_marti_signal.py, commit 62ea652)
+      - H1, not M1/M5      (EA recommends scalping; M1 = net -$22k, 0/6 green years)
+      - CONSERVATIVE mode  (enter only WITH the trend gate; picked 5/5 walk-forward windows)
+      - no trailing stop   (the EA's $7/$7 trail destroyed 70% of profit: $2136 -> $629)
+      - no breakeven / no partial TP / no SL buffer / no time exit / no hour filter
+        (all 10 structural variants tested made Ret/DD WORSE)
+
+    Signal: entry Supertrend(atr_period, mult_entry) FLIPS -> candidate direction; taken only
+    when the slower trend Supertrend(atr_period, mult_trend) agrees. SL = structure extreme of
+    the last `struct_bars` CLOSED bars; TP = tp_ratio x that risk. Broker SL/TP is the exit;
+    an opposite flip closes early.
+
+    ENSEMBLE: `members` independent parameter sets each hold a notional position; the slot
+    trades the MAJORITY direction once net votes exceed `vote_threshold` (fraction of members).
+    TP ratio for the live order = median of the agreeing members.
+
+    Validated (research/eterna_voting_live.py, $1000 @0.01 lot, $0.50/trade):
+      portfolio-of-32 form  net $1587, PF 1.34, maxDD -$283, Ret/DD 1.02, 5/6 green
+      VOTING form (deployed) net $2037, PF 1.26, maxDD -$568, Ret/DD 0.65, 6/6 green
+    The voting form earns MORE but draws down ~2x, because a fractional portfolio scales its
+    exposure with agreement while a single min-lot position cannot. **maxDD -$568 is 57% of a
+    $1000 account** — this slot wants ~$2300 before real money. Demo/paper first.
+
+    Honest caveat: 91% of the backtest profit came from 2024-2026 (gold trending). A
+    block-bootstrap over the flat 2021-2023 regime gives P(loss) 33.6%, median only +$103.
+    The edge is real but needs gold to move; in a flat regime it survives, it does not earn.
+
+    Restart-robust: member states are REPLAYED from bar history on every new H1 bar (same
+    pattern as liquidity_manager), so a restart reconstructs the identical vote. One position.
+    """
+
+    def __init__(self, spec: dict, cfg: dict, data: DataProvider):
+        super().__init__(spec, cfg, data)
+        p = spec.get("params", {})
+        self.timeframe = str(p.get("timeframe", "1h"))
+        self.atr_periods = [int(x) for x in p.get("atr_periods", [7, 10, 14, 20])]
+        self.mult_entries = [float(x) for x in p.get("mult_entries", [1.8, 2.5])]
+        self.mult_trends = [float(x) for x in p.get("mult_trends", [3.8, 5.0])]
+        self.tp_ratios = [float(x) for x in p.get("tp_ratios", [3.0, 4.0])]
+        self.struct_bars = int(p.get("struct_bars", 20))
+        self.vote_threshold = float(p.get("vote_threshold", 0.15))
+        self.min_sl_dist = float(p.get("min_sl_dist", 0.50))
+        self.history_bars = int(p.get("history_bars", 60000))   # ~1000 H1 bars from M1
+        self.members = [(a, me, mt, tp) for a in self.atr_periods
+                        for me in self.mult_entries
+                        for mt in self.mult_trends
+                        for tp in self.tp_ratios]
+        self._prev_action = "FLAT"
+        self._counter = 0
+        self._sl = 0.0
+        self._tp = 0.0
+        self._last_bar_ts = None
+        self._cached: SignalResponse | None = None
+        self._reconciled = False
+
+    # ---------- indicators ----------
+    @staticmethod
+    def _atr(df: pd.DataFrame, n: int) -> pd.Series:
+        pc = df["close"].shift(1)
+        tr = pd.concat([df["high"] - df["low"], (df["high"] - pc).abs(),
+                        (df["low"] - pc).abs()], axis=1).max(axis=1)
+        return tr.ewm(alpha=1.0 / n, adjust=False, min_periods=n).mean()
+
+    def _supertrend(self, df: pd.DataFrame, period: int, mult: float):
+        """+1 uptrend / -1 downtrend per bar (standard Supertrend)."""
+        a = self._atr(df, period)
+        hl2 = (df["high"] + df["low"]) / 2.0
+        up = (hl2 + mult * a).to_numpy()
+        lo = (hl2 - mult * a).to_numpy()
+        c = df["close"].to_numpy()
+        n = len(df)
+        fu = [float("nan")] * n
+        fl = [float("nan")] * n
+        d = [1] * n
+        import math
+        for i in range(1, n):
+            if math.isnan(up[i]) or math.isnan(lo[i]):
+                continue
+            fu[i] = up[i] if (math.isnan(fu[i-1]) or up[i] < fu[i-1] or c[i-1] > fu[i-1]) else fu[i-1]
+            fl[i] = lo[i] if (math.isnan(fl[i-1]) or lo[i] > fl[i-1] or c[i-1] < fl[i-1]) else fl[i-1]
+            if not math.isnan(fu[i-1]) and c[i] > fu[i]:
+                d[i] = 1
+            elif not math.isnan(fl[i-1]) and c[i] < fl[i]:
+                d[i] = -1
+            else:
+                d[i] = d[i-1]
+        return d
+
+    # ---------- ensemble vote ----------
+    def _vote(self, h: pd.DataFrame):
+        """Replay every member over closed bars -> (net_votes, n_members, median_tp_ratio).
+
+        Anti-lookahead (the bug that killed Golden): the entry signal and the trend gate are
+        BOTH read with a one-bar lag, and the structure stop uses only bars before entry.
+        """
+        import math
+        sts = {}
+        for a in self.atr_periods:
+            for m in set(self.mult_entries) | set(self.mult_trends):
+                sts[(a, m)] = self._supertrend(h, a, m)
+
+        o = h["open"].to_numpy()
+        hi = h["high"].to_numpy()
+        lo = h["low"].to_numpy()
+        slo = h["low"].rolling(self.struct_bars).min().shift(1).to_numpy()
+        shi = h["high"].rolling(self.struct_bars).max().shift(1).to_numpy()
+        n = len(h)
+
+        longs = shorts = 0
+        agree_tps = []
+        for (a, me, mt, tpr) in self.members:
+            se, st = sts[(a, me)], sts[(a, mt)]
+            pos = 0
+            entry = sl = tp = 0.0
+            for i in range(2, n):        # from 2: se[i-2] must exist for flip detection
+                if pos != 0:
+                    hit = None
+                    if pos == 1:
+                        hit = sl if lo[i] <= sl else (tp if hi[i] >= tp else None)
+                    else:
+                        hit = sl if hi[i] >= sl else (tp if lo[i] <= tp else None)
+                    if hit is not None:
+                        pos = 0
+                # entry signal = the entry Supertrend FLIPPED on the previous (closed) bar
+                if se[i-1] == se[i-2]:
+                    continue            # no flip -> nothing to act on this bar
+                s = se[i-1]
+                if pos == -s:
+                    pos = 0
+                if pos != 0 or st[i-1] != s:
+                    continue
+                raw = slo[i] if s == 1 else shi[i]
+                if raw is None or math.isnan(raw):
+                    continue
+                dist = abs(o[i] - raw)
+                if dist < self.min_sl_dist:
+                    continue
+                pos, entry = s, o[i]
+                sl = entry - dist if s == 1 else entry + dist
+                tp = entry + tpr * dist if s == 1 else entry - tpr * dist
+            if pos == 1:
+                longs += 1
+                agree_tps.append((1, tpr))
+            elif pos == -1:
+                shorts += 1
+                agree_tps.append((-1, tpr))
+        return longs, shorts, agree_tps
+
+    # ---------- main ----------
+    def evaluate(self) -> SignalResponse:
+        now = pd.Timestamp.utcnow()
+        ts = now.isoformat()
+        self._reconcile()
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return self._emit("FLAT", 0.0, 0.0, ts)
+        h = self._resample(df)
+        if len(h) < max(self.atr_periods) + self.struct_bars + 5:
+            return self._emit("FLAT", 0.0, 0.0, ts)            # warming up
+
+        cur = now.floor(self.timeframe)
+        h_c = h.iloc[:-1] if (h.index[-1] == cur and len(h) > 1) else h   # closed bars only
+        bar_ts = h_c.index[-1]
+        if self._cached is not None and bar_ts == self._last_bar_ts:
+            return self._cached                                 # one decision per H1 bar
+        self._last_bar_ts = bar_ts
+
+        longs, shorts, agree = self._vote(h_c)
+        total = len(self.members)
+        net = longs - shorts
+        need = self.vote_threshold * total
+        want = "BUY" if net >= need else ("SELL" if net <= -need else "FLAT")
+        logger.info(f"[{self.name}] vote long={longs} short={shorts} net={net} "
+                    f"(need {need:.1f}/{total}) -> {want}")
+
+        if want == "FLAT":
+            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
+            return self._cached
+        if want == self._prev_action:
+            self._cached = self._emit(want, self._sl, self._tp, ts)   # hold, same signal_id
+            return self._cached
+
+        d = 1 if want == "BUY" else -1
+        px = float(h_c["close"].iloc[-1])
+        window = h_c.iloc[-(self.struct_bars + 1):-1]
+        raw = float(window["low"].min()) if d == 1 else float(window["high"].max())
+        dist = abs(px - raw)
+        if dist < self.min_sl_dist:
+            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
+            return self._cached
+        tprs = [t for s, t in agree if s == d] or [3.5]
+        tpr = float(pd.Series(tprs).median())
+        sl = px - dist if d == 1 else px + dist
+        tp = px + tpr * dist if d == 1 else px - tpr * dist
+
+        if _book_conflict(self.cfg["symbols"][self.symbol]["mt5_symbol"], want, self.magic):
+            logger.info(f"[{self.name}] net-exposure guard: another book slot already {want}")
+            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
+            return self._cached
+        if not _risk_ok(px, sl, float(self.lot), self.cfg["symbols"][self.symbol]["mt5_symbol"]):
+            logger.info(f"[{self.name}] risk cap: stop too wide ({dist:.2f}) -> skip")
+            self._cached = self._emit("FLAT", 0.0, 0.0, ts)
+            return self._cached
+
+        self._cached = self._emit(want, sl, tp, ts)
+        return self._cached
+
+    def _resample(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.resample(self.timeframe, label="left", closed="left").agg(
+            {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+
+    def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:
+        action = _governed(action, self._prev_action)       # monthly profit governor gate
+        if action != self._prev_action:
+            self._counter += 1
+            self._prev_action, self._sl, self._tp = action, sl, tp
+        if action == "FLAT":
+            return self._flat(str(self._counter), ts)
+        return SignalResponse(
+            strategy=self.name, symbol=self.symbol, action=action,
+            sl=round(self._sl, 3), tp=round(self._tp, 3), lot=float(self.lot),
+            magic=self.magic, signal_id=f"{self.symbol}-{self.name}-{self._counter}", ts=ts,
+        )
+
+    def _reconcile(self) -> None:
+        """Adopt/forget the live MT5 position once, so a restart never double-opens."""
+        if self._reconciled:
+            return
+        try:
+            import MetaTrader5 as mt5
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            for p in (mt5.positions_get(symbol=mt5_symbol) or []):
+                if p.magic == self.magic:
+                    self._prev_action = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
+                    self._sl, self._tp = float(p.sl), float(p.tp)
+                    logger.info(f"[{self.name}] adopted live position {self._prev_action} "
+                                f"sl={p.sl} tp={p.tp}")
+                    break
+        except Exception as e:
+            logger.warning(f"[{self.name}] reconcile skipped ({e})")
+        self._reconciled = True
+
+
 STRATEGY_TYPES = {
     "dummy": DummyStrategy,
     "orb": ORBStrategy,
@@ -1414,6 +1664,7 @@ STRATEGY_TYPES = {
     "mr": MeanReversionStrategy, # Mean-reversion z-score fade (diversifier)
     "liqlimit": LiquidityLimitStrategy,  # Liquidity Limit (Supertrend band 'limit' entries)
     "golden": GoldenStrategy,    # Golden Strategy 1 (fade-with-trend M5 XAU + ADX skip)
+    "eterna": EternaStrategy,    # Eterna (dual-Supertrend H1 XAU, ensemble by vote)
 }
 
 
