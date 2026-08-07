@@ -46,13 +46,24 @@ def _entries_paused() -> bool:
         return False
 
 
-def _risk_cap() -> float:
-    """Per-trade $ risk cap from the governor (0 = no cap)."""
+def _config_cap() -> float:
     try:
-        import json
-        return float(json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", 0.0))
+        return float((load_config().get("governor") or {}).get("max_risk_per_trade", 0.0) or 0.0)
     except Exception:
         return 0.0
+
+
+def _risk_cap() -> float:
+    """Per-trade $ risk cap. Prefer the LIVE governor state; if governor.json is missing/unreadable,
+    FAIL CLOSED to the config default (a downed governor must never silently uncap risk)."""
+    try:
+        import json
+        v = json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", None)
+        if v is not None:
+            return float(v)
+    except Exception:
+        pass
+    return _config_cap()
 
 
 class OrbStopManager:

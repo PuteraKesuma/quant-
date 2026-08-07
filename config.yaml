@@ -13,7 +13,7 @@ symbols:
   XAUUSD:
     type: commodity
     pip_size: 0.01
-    mt5_symbol: "XAUUSDx"      # 2026-07-08 WMT: gold symbol is XAUUSDx (same specs: 0.01 lot=$1/pt)
+    mt5_symbol: "XAUUSD"       # 2026-07-12 back on FBS-Demo (106271896): gold = XAUUSD (contract 100, 0.01=$1/pt). WMT was XAUUSDx.
     dukascopy_instrument: "XAU/USD"
     sessions:
       asia:     { open: "00:00", close: "01:00", tz: "UTC" }   # Tokyo open; ORB edge validated OOS pf 1.17
@@ -22,7 +22,7 @@ symbols:
   NAS100:
     type: index
     pip_size: 0.25
-    mt5_symbol: "NQ100x"       # 2026-07-08 WMT: Nasdaq is NQ100x (vol_min 0.1, $0.10/pt = demo 0.01 US100)
+    mt5_symbol: "US100"        # 2026-07-12 back on FBS-Demo: Nasdaq = US100 (contract 10, 0.01=$0.10/pt). WMT was NQ100x.
     dukascopy_instrument: "E_NQ-100"
     sessions:
       new_york: { open: "13:30", close: "14:30", tz: "UTC" }
@@ -124,7 +124,7 @@ live:
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
-      lot: 0.2               # 2026-07-08 WMT: NQ100x min 0.1; 0.2 = ~2x demo ($0.20/pt, risk ~$50)
+      lot: 0.01              # 2026-07-12 FBS-Demo $287: US100 0.01 = $0.10/pt (WMT was 0.2 NQ100x)
       magic: 920617          # manager owns it now (EA gets no NAS100 signal -> leaves it alone)
       params:
         range_minutes: 30    # NY 30-min opening range
@@ -181,7 +181,9 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
-      enabled: true         # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) — the
+      enabled: false        # OFF 2026-08-06: dimatikan user saat rebuild VPS (menuju strategi 'eterna').
+                            #   Reversible: set true + restart brain. Riwayat alasan lama di bawah.
+                            # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) — the
                             #   FULL book Z+NAS+LIQ (OOS-PF 1.87, net +$4685) needs its main engine back;
                             #   NAS+LIQ alone was the weakest combo (OOS 1.56, negative 2022). User chose FULL.
       type: zrev            #   2026-06-29 audit (entry20/exit20 = always-in): IS PF 1.09, OOS 1.58,
@@ -189,7 +191,7 @@ live:
                             #   hold ~1 hari, SELALU ada posisi (flip ~tiap 1.8 hari). maxDD -$501 @0.01
                             #   lot -> under-capitalized di $400 demo; real money butuh ~$1500+.
       symbol: XAUUSD
-      lot: 0.02             # 2026-07-08 WMT: base 0.02 (was 0.01 demo); dynamic lot 0.02-0.04
+      lot: 0.01             # 2026-07-12 FBS-Demo $287: base 0.01 (WMT was 0.02-0.04); capital-cap holds it at 0.01
       magic: 920622         # UNIQUE (920617=US100, 920618=orb_xau, 920620=orb_xau_asia lama, 920621=vision)
       params:
         entry_n: 20         # entry channel = breakout 20 jam (Donchian)
@@ -199,9 +201,19 @@ live:
         trend_ema: 100      # hanya long saat close>EMA100, hanya short saat close<EMA100
         daily_filter: true  # 2026-06-29: gate tren HARIAN (multi-TF align) -> DD -$406->-$313 (-23%),
         daily_sma: 50       #   PF 1.33->1.63, OOS 2.19, MC 1.41. Cuma trade kalau H1 + harian sepakat.
+        adx_min: 28         # 2026-07-17 GATE KE-3 = KEKUATAN tren (bukan arah). Cuma entry kalau ADX
+        adx_period: 14      #   harian (bar selesai, no-lookahead) >= 28 -> Z duduk diam saat emas chop.
+                            #   research/regime_fix.py + final_1000.py, equity path-dependent dari $1000:
+                            #   gate 0 (setelan lama) -> maxDD -62%, 5/6 thn hijau, Sharpe 1.58
+                            #   gate 28 (ini)         -> maxDD -19%, 6/6 thn hijau, Sharpe 1.45
+                            #   HARGANYA JUJUR: Z 549 -> 187 trade, profit backtest $41k -> $9.6k @ $1000.
+                            #   Dipilih utk DD TERENDAH + satu-satunya 6/6 hijau (user: "bisa bertahan"),
+                            #   BUKAN utk profit maksimum (gate 18 lebih cuan tapi 2021 merah -$31).
+                            #   Catatan: di gate 28 Z cuma untung saat emas trending (2024-26); ORB +
+                            #   Reversal yang bikin 2021-2023 hijau. Jangan matikan mereka.
         dynamic_lot: true   # 2026-06-29 TEST: lot ikut momentum entry (z-score). Validasi: net +37%,
-        lot_min: 0.02       #   2026-07-08 WMT funded ($9.7k): 0.02-0.04 dynamic by momentum.
-        lot_max: 0.04       #   the WMT Rules Governor caps any single trade at $90 risk (skip if over).
+        lot_min: 0.01       #   2026-07-12 FBS-Demo: 0.01-0.02 dynamic; capital-cap (lot_per_balance) pins 0.01 at $287.
+        lot_max: 0.02       #   risk cap ($90) now FAIL-CLOSED to config even if governor.json is missing.
         lot_z_lo: 0.5       # 2026-07-08 PLAYBOOK RULE #3 (research/z_momentum_sizing.py, walk-forward):
         lot_z_hi: 1.0       #   size 0.02 at entry-momentum z_dir>=1 (was z_hi 3.0 = only at z>=2).
                             #   Sharpe 1.20->1.26, net +27%, OOS 2.48->2.34, same 0.02 cap/tail. 0.03
@@ -234,12 +246,28 @@ live:
         history_bars: 15000 # ~250 jam = ~62 bar 4H (cukup utk EMA50+channel; kecil biar /signals cepat)
 
     - name: golden_xau      # Golden Strategy 1 — rehabilitated Semi-Marti EA signal (martingale stripped)
-      enabled: true         # 2026-07-08 DEMO PAPER-TEST. Market entry via the XAUUSD EA (like Z), broker
-                            #   ATR stop + 3R TP. Backtest: PF 2.14, OOS 1.99, maxDD -35% vs unfiltered,
-                            #   11/11 walk-forward, 6/6 green (research/semi_marti_*.py + regime_adaptive.py).
-      type: golden          #   Corr to Z only +0.15 = genuine XAU complement. IN-SAMPLE only -> forward-test.
+      enabled: false        # DISABLED 2026-07-17 (research/golden_check.py + book_1000_full.py) — ARTIFACT,
+                            #   bukan edge. Sama kelasnya dengan mr_xau. Semua riset Golden (semi_marti_*.py,
+                            #   regime_adaptive.py, regime_sizing.py) me-reindex gate H1 ke M5 dengan ffill
+                            #   TANPA shift: `adx(h1).reindex(idx5, method="ffill")` dan `t15 = np.sign(...)
+                            #   .reindex(idx5, method="ffill")`. resample("1h") berlabel AWAL bar, jadi bar
+                            #   10:00 (isi data s/d 10:59) sudah kepakai di M5 10:05 => LOOKAHEAD s/d 55 menit
+                            #   pada trend-gate + ADX-gate. ATR M5 di file yang sama di-.shift(1) (benar) —
+                            #   gate H1-nya yang kelewat. Padahal sinyal mentahnya RUGI; dua gate itulah
+                            #   seluruh "edge" => edge = lookahead-nya.
+                            #   Setelah gate di-shift +1h (jujur): PF 2.14 -> 1.04, WR 26%, 6/6 -> 3/6 hijau
+                            #   (2021/2022/2026 RED), net +$341 / 1259 trade = +$0.27/trade = lempar koin.
+                            #   Portfolio $1000: Golden ON melipatgandakan maxDD -19% -> -39% dan merusak
+                            #   robustness 6/6 -> 4/6 (Sharpe 1.45 -> 1.28) demi +$361. Opposite-guard TIDAK
+                            #   menolong (DD tetap -39%; cuma 24 dari 1259 entry yang bentrok arah dgn Z).
+                            #   Konsisten dgn live: 2026-07-17 Golden long 0.02 vs Z short -> SL -$45.36,
+                            #   dan 2026 = tahun TERBURUK Golden di backtest jujur (-$312, DD -$988).
+                            #   regime_sizing.py punya bug yang sama => aturan lot_favorable 0.02 (klaim
+                            #   "+40% net") juga fiktif. JANGAN diaktifkan sebelum riset di-rerun dgn gate
+                            #   H1 di-shift dan hasilnya terbukti positif secara mandiri.
+      type: golden
       symbol: XAUUSD
-      lot: 0.02             # 2026-07-08 WMT: base 0.02 (regime-sized to 0.04 in favorable low-ADX)
+      lot: 0.01             # 2026-07-12 FBS-Demo $287: base 0.01 (regime-sized to 0.02 in favorable low-ADX)
       magic: 920626         # UNIQUE (920617=NQ ORB, 920622=Z, 920624=zrev4h archived, 920625=LIQ retired)
       params:
         timeframe: "5min"   # signal TF (normalized MACD + price over norm bars)
@@ -259,8 +287,8 @@ live:
         # --- regime-based sizing (validated playbook rule, research/regime_sizing.py) ---
         regime_sizing: true # size up in the favorable low-ADX regime (Golden's best bin)
         size_adx_thresh: 20 # H1 ADX < this -> favorable regime
-        lot_favorable: 0.04 # 2026-07-08 WMT: 0.04 in favorable regime (base 0.02). Risk-capped $90/trade.
-                            #   (demo was 0.02/0.01; validated ratio kept, scaled 2x for the funded acct.)
+        lot_favorable: 0.02 # 2026-07-12 FBS-Demo: 0.02 in favorable low-ADX regime (base 0.01) = validated demo ratio.
+                            #   Risk-capped $90/trade (fail-closed). WMT used 0.04/0.02.
         history_bars: 15000 # ~250h M1 -> plenty for M5 norm(100) + H1 EMA15/ADX14
 
     # (2026-07-09 dummy_wmt EA-loop test PASSED — brain->EA->WMT execution proven; slot removed.)
@@ -326,15 +354,17 @@ advisor:
 # read by the brain (Z+Golden) and the ORB manager. Run via START_GOVERNOR.bat.
 governor:
   enabled: true
-  mode: rules                         # 2026-07-08 WMT FUNDED: enforce PROP RULES (NOT bersyukur profit-take)
+  mode: rules                         # 2026-07-12 FBS-Demo forward-test: keep RULES path active (exercises the fixed cap)
   magics: [920617, 920622, 920626]   # ORB + Z + Golden (the live book)
-  # --- WMT rules mode (funded acct 1113545, $10k initial) ---
+  # --- demo-safe numbers (FBS-Demo 106271896, ~$287). Floor/daily LOOSE so they don't nuisance-trip a forward test;
+  #     the per-trade risk cap stays $90 (harmless at 0.01 lot, but blocks any absurdly-wide stop). All values are
+  #     read live from governor.json; if that file is missing, signal.py now FAILS CLOSED to max_risk_per_trade here. ---
   max_risk_per_trade: 90             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
-  daily_loss_usd: 500                # WMT daily loss limit
-  daily_stop_buffer: 60              # pause NEW entries when today's realized loss reaches (500-60)=$440
-  maxloss_floor: 9000                # WMT max total loss floor (10% of $10k initial, static)
-  maxloss_buffer: 150                # pause+flatten when equity falls to (9000+150)=$9150 (protect account)
-  poll_seconds: 60                   # funded acct -> check faster
+  daily_loss_usd: 250                # loose on demo (won't stop a normal forward-test day)
+  daily_stop_buffer: 0
+  maxloss_floor: 50                  # only flatten if the demo is nearly wiped (equity -> $50+buffer)
+  maxloss_buffer: 0
+  poll_seconds: 60
   # --- profit ('bersyukur') mode fields, unused when mode=rules ---
   threshold: 0.75
   target_usd: null

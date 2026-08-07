@@ -1,0 +1,39 @@
+{
+  "ts": "2026-07-15T00:02:42.343075Z",
+  "book": "gold+nas+jpy_daily_sleeve",
+  "weights": {
+    "GOLD": 1.0,
+    "NAS": 1.0,
+    "JPY": 0.5
+  },
+  "equal_risk_within_weight": true,
+  "signals": {
+    "GOLD": {
+      "dir": "SHORT",
+      "risk_weight": 0.43,
+      "px": 4052.57,
+      "chan_hi": 4836.94,
+      "chan_lo": 4000.8,
+      "book_weight": 1.0
+    },
+    "NAS": {
+      "dir": "LONG",
+      "risk_weight": 0.43,
+      "px": 29688.24,
+      "chan_hi": 30660.41,
+      "chan_lo": 22863.08,
+      "book_weight": 1.0
+    },
+    "JPY": {
+      "dir": "LONG",
+      "risk_weight": 3.0,
+      "px": 162.193,
+      "sma100": 159.724,
+      "carry_pct": 3.23,
+      "net_carry_pct": 0.91,
+      "note": "carry sleeve: long only when NET carry (after ~2.3%/yr FBS swap markup) > 0",
+      "book_weight": 0.5
+    }
+  },
+  "status": "SHADOW (not live until go-live wiring approved)"
+}

@@ -30,3 +30,7 @@ Thumbs.db
 .claude/
 vision_journal.jsonl
 _DOC/vision/
+
+# artefak backup / binary tool (2026-08-06)
+vps-zrev-live.bundle
+tools/Autologon64.exe

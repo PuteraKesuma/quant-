@@ -51,12 +51,66 @@ def _governed(action: str, prev: str) -> str:
     return action
 
 
-def _risk_cap() -> float:
-    """Per-trade $ risk cap from the governor (0 = no cap, e.g. demo/profit mode)."""
+_CFG_CACHE = None
+
+
+def _cfg() -> dict:
+    """Cached config.yaml (for fail-closed cap + book magics). {} on any error."""
+    global _CFG_CACHE
+    if _CFG_CACHE is None:
+        try:
+            _CFG_CACHE = load_config()
+        except Exception:
+            _CFG_CACHE = {}
+    return _CFG_CACHE
+
+
+def _config_cap() -> float:
     try:
-        return float(_json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", 0.0))
+        return float((_cfg().get("governor") or {}).get("max_risk_per_trade", 0.0) or 0.0)
     except Exception:
         return 0.0
+
+
+def _risk_cap() -> float:
+    """Per-trade $ risk cap. Prefer the LIVE governor state; if governor.json is missing/unreadable,
+    FAIL CLOSED to the config default so a downed governor never silently removes the cap
+    (the 2026-07 WMT bug: governor died -> cap became 0 -> an over-limit trade slipped through)."""
+    try:
+        v = _json.loads(_GOV_STATE.read_text(encoding="utf-8")).get("max_risk_per_trade", None)
+        if v is not None:
+            return float(v)
+    except Exception:
+        pass
+    return _config_cap()
+
+
+def _book_magics() -> set:
+    try:
+        return {int(m) for m in (_cfg().get("governor") or {}).get("magics", [])}
+    except Exception:
+        return set()
+
+
+def _book_conflict(mt5_symbol: str, want_action: str, my_magic) -> bool:
+    """Net-exposure guard: True if ANOTHER book slot already holds a SAME-direction position on this
+    symbol. Prevents two correlated slots stacking same-side risk (the 2026-07 Z+Golden double-short
+    that doubled the drawdown). Fail-OPEN on any MT5 error (a read glitch must not halt the book)."""
+    if want_action not in ("BUY", "SELL"):
+        return False
+    try:
+        import MetaTrader5 as mt5
+        book = _book_magics()
+        for p in (mt5.positions_get(symbol=mt5_symbol) or []):
+            if p.magic == my_magic or p.magic not in book:
+                continue
+            pdir = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
+            if pdir == want_action:
+                return True
+    except Exception as e:
+        logger.warning(f"[net-exposure] check failed ({e}); allowing entry")
+        return False
+    return False
 
 
 def _risk_ok(entry: float, sl: float, lot: float, mt5_symbol: str) -> bool:
@@ -620,6 +674,18 @@ class ZRevStrategy(BaseStrategy):
         # the counter-secular-trend trades that drive the drawdown (PF up, DD -23%).
         self.daily_filter = bool(p.get("daily_filter", False))
         self.daily_sma = int(p.get("daily_sma", 50))
+        # Optional THIRD gate — trend STRENGTH (not direction): only enter when the previous
+        # completed DAILY Wilder ADX(adx_period) >= adx_min, i.e. gold is genuinely trending.
+        # The other two gates say WHICH WAY; this one says WHETHER TO PLAY AT ALL. Validated
+        # (research/regime_fix.py + final_1000.py, path-dependent equity from $1000):
+        #   gate 0 (old live) -> maxDD -62%, 5/6 green | gate 28 -> maxDD -19%, 6/6 green.
+        # Cost is real: Z trades 549 -> 187 and Z only profits in trending years; ORB+Reversal
+        # carry the chop. Chosen for LOWEST DD + only all-green setting, not for max profit.
+        # 0 = off. Fail-safe: ADX unavailable -> 0.0 -> blocks new entries (same policy as
+        # _daily_trend). Gates entries AND reversals, never forces an exit — matches the
+        # backtest, where an against-gate channel break exits to FLAT instead of reversing.
+        self.adx_min = float(p.get("adx_min", 0.0))
+        self.adx_period = int(p.get("adx_period", 14))
         # Dynamic lot by entry MOMENTUM (z-score of price vs 20-bar mean, direction-
         # adjusted). Validated: strong-momentum breakouts are much better trades, so
         # size up on high z, min lot on weak. Linear lot_min..lot_max over z_lo..z_hi,
@@ -684,6 +750,10 @@ class ZRevStrategy(BaseStrategy):
             dd = self._daily_trend(now)
             can_long = can_long and (dd == 1)
             can_short = can_short and (dd == -1)
+        if self.adx_min > 0:                             # trend-STRENGTH gate: sit out the chop
+            strong = self._daily_adx(now) >= self.adx_min
+            can_long = can_long and strong
+            can_short = can_short and strong
 
         prev = self._prev_action
         if prev == "BUY":                                    # currently long
@@ -715,8 +785,11 @@ class ZRevStrategy(BaseStrategy):
         if self.atr_stop_mult > 0 and self.use_sl and action in ("BUY", "SELL"):
             sl = self._atr_tighten(completed, forming, action, sl)
         lot = self._dynamic_lot(completed, forming, action) if action in ("BUY", "SELL") else self.lot
-        if action in ("BUY", "SELL") and action != prev:                # new entry / reversal -> risk cap
+        if action in ("BUY", "SELL") and action != prev:                # new entry / reversal -> guards
             mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            if _book_conflict(mt5_symbol, action, self.spec.get("magic")):
+                logger.info(f"[{self.name}] net-exposure: book already {action} {self.symbol} -> SKIP entry")
+                return self._emit("FLAT", 0.0, ts)
             if not _risk_ok(float(forming["close"]), sl, lot, mt5_symbol):
                 logger.info(f"[{self.name}] risk cap: {action} stop too wide (> ${_risk_cap():.0f}) -> SKIP entry")
                 return self._emit("FLAT", 0.0, ts)
@@ -825,6 +898,45 @@ class ZRevStrategy(BaseStrategy):
         self._dtrend_cache = cache
         logger.info(f"[{self.name}] daily trend(SMA{self.daily_sma}) dir = {direction}")
         return direction
+
+    def _daily_adx(self, now) -> float:
+        """Wilder ADX(adx_period) on COMPLETED daily bars — the forming day is dropped, which is
+        the live equivalent of the backtest's .shift(1) (research/regime_fix.py: adx_daily). Daily
+        bars from MT5 (D1), cached once/day. 0.0 (and any error) -> blocks NEW entries whenever
+        adx_min > 0 (fail-safe, same policy as _daily_trend)."""
+        today = now.normalize()
+        cache = getattr(self, "_dadx_cache", {})
+        key = (today, self.adx_period)
+        if key in cache:
+            return cache[key]
+        value = 0.0
+        try:
+            import MetaTrader5 as mt5
+            import numpy as np
+            n = self.adx_period
+            mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
+            rates = mt5.copy_rates_from_pos(mt5_symbol, mt5.TIMEFRAME_D1, 0, max(n * 10, 150))
+            if rates is not None and len(rates) > n * 3:
+                d = pd.DataFrame(rates)[["high", "low", "close"]].astype(float).iloc[:-1]  # drop forming day
+                h, l, c = d["high"], d["low"], d["close"]
+                up, dn = h.diff(), -l.diff()
+                plus = np.where((up > dn) & (up > 0), up, 0.0)
+                minus = np.where((dn > up) & (dn > 0), dn, 0.0)
+                tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+                atr = tr.ewm(alpha=1 / n, adjust=False).mean()
+                pdi = 100 * pd.Series(plus, index=d.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+                mdi = 100 * pd.Series(minus, index=d.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+                dx = 100 * (pdi - mdi).abs() / (pdi + mdi).replace(0, np.nan)
+                last = float(dx.ewm(alpha=1 / n, adjust=False).mean().iloc[-1])
+                value = last if last == last else 0.0                          # NaN -> fail-safe 0
+        except Exception as e:
+            logger.warning(f"[{self.name}] daily_adx unavailable: {e}")
+            value = 0.0
+        cache[key] = value
+        self._dadx_cache = cache
+        logger.info(f"[{self.name}] daily ADX({self.adx_period}) = {value:.1f} "
+                    f"(min {self.adx_min:.0f} -> {'TRADE' if value >= self.adx_min else 'SIT OUT'})")
+        return value
 
     def _reconcile_position(self) -> None:
         """On first poll, adopt any existing MT5 position under this magic as the
@@ -1206,7 +1318,10 @@ class GoldenStrategy(BaseStrategy):
             sl, tp = price + risk, price - self.tp_r * risk
         # regime-based lot: size up in the favorable low-ADX regime (else base lot)
         self._lot = self.lot_favorable if (self.regime_sizing and adx < self.size_adx_thresh) else self.lot
-        mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]     # per-trade risk cap ($90 WMT rule)
+        mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]     # net-exposure + per-trade risk cap
+        if _book_conflict(mt5_symbol, action, self.spec.get("magic")):
+            logger.info(f"[{self.name}] net-exposure: book already {action} {self.symbol} -> SKIP entry")
+            return self._emit("FLAT", 0.0, 0.0, ts)
         if not _risk_ok(price, sl, self._lot, mt5_symbol):
             logger.info(f"[{self.name}] risk cap: {action} risk > ${_risk_cap():.0f} -> SKIP entry")
             return self._emit("FLAT", 0.0, 0.0, ts)
