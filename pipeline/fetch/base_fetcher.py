@@ -7,8 +7,15 @@ from loguru import logger
 
 
 def load_config() -> dict:
+    """config.yaml is UTF-8 (Indonesian comments, em dashes). Say so explicitly.
+
+    Without `encoding`, Windows opens it as cp1252: most bytes happen to decode into
+    harmless mojibake inside comments, but a single byte cp1252 doesn't map (e.g. 0x9d
+    from a UTF-8 curly quote) raises UnicodeDecodeError and the whole brain fails to
+    start. Latent since day one; tripped on 2026-08-07.
+    """
     root = Path(__file__).parent.parent.parent
-    with open(root / "config.yaml") as f:
+    with open(root / "config.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

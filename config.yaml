@@ -355,7 +355,11 @@ live:
     #   kendali di akun kecil adalah MELEWATI trade itu -> governor.max_risk_per_trade.
     # =================================================================================
     - name: eterna_xau
-      enabled: false        # OFF sampai shadow-check di demo bersih. Set true + restart brain.
+      enabled: true         # 2026-08-07 SHADOW: shadow-check lolos (feed FBS vs Dukascopy
+                            #   sepakat 99,7%, korelasi 0.999973, offset server +3h benar).
+                            #   EA BELUM di-attach ke chart -> brain menghitung, tak ada
+                            #   yang mengeksekusi. Attach EA hanya setelah beberapa hari
+                            #   sinyal live terlihat wajar.
       type: eterna
       symbol: XAUUSD
       lot: 0.01
