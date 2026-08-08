@@ -1135,3 +1135,10 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-08 01:18:15 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-eterna_xau-0)
 - **2026-08-08 01:18:15 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
 - **2026-08-08 01:24:23 UTC** BK  [backup] Mulai cadangan otomatis.
+- **2026-08-08 01:24:26 UTC** CMT [backup] 3 perubahan otomatis di-commit (jangan biarkan kerja menganggur).
+- **2026-08-08 01:24:32 UTC** BK  [backup] Bundle dibuat: quant-backup-20260807-1824.bundle (4.22 MB, HEAD 02de6d7).
+- **2026-08-08 01:26:49 UTC** BK  [backup] ZIP dibuat: QUANT-BACKUP-20260807-1824.zip (9.28 MB). TARIK KE PC LOKAL.
+- **2026-08-08 01:26:57 UTC** WRN [backup] Push GitHub GAGAL (kredensial belum tersimpan). 9 commit masih HANYA di VPS ini. Cadangan off-VPS bergantung pada ZIP di Downloads.
+- **2026-08-08 01:26:57 UTC** BK  [backup] Selesai. HEAD 02de6d7.
+- **2026-08-08 01:48:25 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 02:02:21 UTC** BK  [backup] Mulai cadangan otomatis.
