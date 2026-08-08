@@ -13,9 +13,11 @@ from pathlib import Path
 import numpy as np, pandas as pd
 import MetaTrader5 as mt5
 
-SYMBOL, MAGIC, LOT = "US100", 920633, 0.01
-DRY_RUN = True                                  # SHADOW 2026-08-06: dimatikan user saat rebuild VPS (menuju 'eterna').
-                                                # Was LIVE (redeployed 2026-07-15 as 3rd sleeve; sized for ~$1000)
+SYMBOL, MAGIC, LOT = "US100", 920633, 0.02   # 2026-08-08: 2 unit dari rasio portofolio 3:2:1:1
+DRY_RUN = False                                 # LIVE 2026-08-08: sleeve RSI2 dalam portofolio 4-sleeve
+                                                # (bobot 29%, lot 0.02). Satu-satunya sleeve MEAN-REVERSION
+                                                # -> korelasi ~0.00 terhadap ZREV/ORB, itu sumbangan utamanya.
+                                                # Shadow 2026-08-06 saat rebuild; LIVE lagi sejak portofolio dipasang.
 ENTRY_RSI, SMA_TREND, SMA_EXIT = 10, 200, 5
 DISASTER_STOP_PCT = 0.05                         # catastrophe backstop only (~-$148 at 0.01; wide on purpose)
 LOG = Path(r"C:\Quant\_MONITOR\reversal.jsonl")

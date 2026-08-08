@@ -116,7 +116,11 @@ live:
     - name: orb30_nas        # NAS100 â€” REPRODUCED 2026-06-28 (full live logic, M1 fill):
                              #   OOS PF 1.40, IS 1.28, 6/6 thn hijau, MC 5th-pct 1.04, 0% order invalid.
                              #   Edge nyata tapi TIPIS (exp ~0.08R). Klaim lama "1.52" sedikit optimis.
-      enabled: false         # 2026-07-04: EA market-slot OFF. The orb_stop_manager (brain-side) owns a
+      enabled: true          # 2026-08-08 PORTOFOLIO: dinyalakan sebagai sleeve dengan bobot TERBESAR
+                             #   (inverse-vol dari data 2021-2025 memberi ORB 43%). orb_stop_manager
+                             #   TIDAK dijalankan -> slot EA (market entry) yang aktif, dan itu memang
+                             #   versi yang di-backtest di research/portfolio_audit.py::nas_dollars.
+                             # 2026-07-04: EA market-slot OFF. The orb_stop_manager (brain-side) owns a
                              #   REAL pending STOP at the range boundary for magic 920617 -> reclaims the
                              #   +4.75..+16.30 pt entry slippage the market EA gave (signal_logic_audit.py).
                              #   Faithful port of THIS slot's logic (same trades), EA untouched + still OUT
@@ -124,7 +128,10 @@ live:
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
-      lot: 0.01              # 2026-07-12 FBS-Demo $287: US100 0.01 = $0.10/pt (WMT was 0.2 NQ100x)
+      lot: 0.03              # 2026-08-08: 3 unit dari rasio portofolio 3:2:1:1 (ORB=43% bobot).
+                             #   Lot minimum 0.01 tidak bisa dipecah, jadi bobot inverse-vol
+                             #   didekati lewat RASIO LOT BILANGAN BULAT, bukan pecahan.
+                             # US100 0.01 = $0.10/pt (WMT was 0.2 NQ100x)
       magic: 920617          # manager owns it now (EA gets no NAS100 signal -> leaves it alone)
       params:
         range_minutes: 30    # NY 30-min opening range
@@ -181,8 +188,15 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
-      enabled: false        # OFF 2026-08-06: dimatikan user saat rebuild VPS (menuju strategi 'eterna').
-                            #   Reversible: set true + restart brain. Riwayat alasan lama di bawah.
+      enabled: true         # 2026-08-08 PORTOFOLIO: dinyalakan lagi sebagai sleeve (bobot 14%, lot 0.01).
+                            #   CATATAN: korelasi bulanan ZREV vs ETERNA = +0.83 (sama-sama trend-follow
+                            #   emas). Karena 920622 ADA di governor.magics sementara eterna (920627)
+                            #   tidak, _book_conflict() akan MEMBLOKIR eterna saat zrev sudah pegang arah
+                            #   yang sama di XAUUSD. Itu menyimpang dari backtest (yang menganggap keduanya
+                            #   independen) TAPI sengaja dibiarkan: mencegah dua sleeve kembar menumpuk
+                            #   risiko searah adalah perilaku yang benar.
+                            # OFF 2026-08-06: dimatikan user saat rebuild VPS (menuju strategi 'eterna').
+                            #   Reversible: set false + restart brain. Riwayat alasan lama di bawah.
                             # RE-ENABLED 2026-07-03: portfolio study (research/portfolio_best.py) â€” the
                             #   FULL book Z+NAS+LIQ (OOS-PF 1.87, net +$4685) needs its main engine back;
                             #   NAS+LIQ alone was the weakest combo (OOS 1.56, negative 2022). User chose FULL.
