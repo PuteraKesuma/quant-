@@ -1459,8 +1459,16 @@ class EternaStrategy(BaseStrategy):
         self.mult_trend = float(p.get("mult_trend", 3.8))
         # EA line 259 ties the structure lookback to ATR_Period; keep them tied by default.
         self.struct_bars = int(p.get("struct_bars", self.atr_period))
-        self.tp_ratio = float(p.get("tp_ratio", 4.0))
+        self.tp_ratio = float(p.get("tp_ratio", 4.0))       # 0 = no TP (EA Manual_TP_Points=0)
         self.min_sl_dist = float(p.get("min_sl_dist", 0.30))
+        # --- EA-faithful switches, reconstructed from the user's real deal history ---
+        #   magic 920641 traded MODE_DIRECT + SL_MANUAL $10 + no TP (28 Jul - 5 Aug 2026):
+        #   it closed and reopened at the SAME second and price (always-in stop-and-reverse),
+        #   and its stop-out was exactly -$10.00 at 0.01 lot. Both modes are supported so the
+        #   original and the researched variant can run side by side under different magics.
+        self.mode = str(p.get("mode", "conservative"))      # conservative | direct
+        self.sl_mode = str(p.get("sl_mode", "structure"))   # structure | manual
+        self.manual_sl_usd = float(p.get("manual_sl_usd", 10.0))  # SL_MANUAL 1000 pts @0.01
         self.history_bars = int(p.get("history_bars", 30000))   # ~500 H1 bars from M1
         self._prev_action = "FLAT"
         self._counter = 0
@@ -1533,24 +1541,43 @@ class EternaStrategy(BaseStrategy):
         aligned = st_t[-1] == s
         side = "BUY" if s == 1 else "SELL"
 
-        # opposite signal closes an open position, exactly like the backtest
-        if self._prev_action in ("BUY", "SELL") and flipped and side != self._prev_action:
-            logger.info(f"[{self.name}] opposite flip -> close {self._prev_action}")
-            return self._emit("FLAT", 0.0, 0.0, ts)
-        if self._prev_action in ("BUY", "SELL"):
-            return self._emit(self._prev_action, self._sl, self._tp, ts)   # hold; broker exits
-        if not flipped or not aligned:
-            return self._emit("FLAT", 0.0, 0.0, ts)
+        if self.mode == "direct":
+            # MODE_DIRECT: always-in stop-and-reverse, no trend gate. Emitting the opposite
+            # side is enough — the EA's ReconcileTo closes and reopens in one step, which is
+            # exactly what magic 920641 did (close + open at the same second and price).
+            # After a broker SL the signal_id is unchanged, so the EA does NOT re-enter until
+            # the next genuine flip — matching the observed 5 Aug stop-out with no re-entry.
+            if not flipped and self._prev_action == "FLAT":
+                return self._emit("FLAT", 0.0, 0.0, ts)
+            if side == self._prev_action:
+                return self._emit(side, self._sl, self._tp, ts)        # hold
+        else:
+            # opposite signal closes an open position, exactly like the backtest
+            if self._prev_action in ("BUY", "SELL") and flipped and side != self._prev_action:
+                logger.info(f"[{self.name}] opposite flip -> close {self._prev_action}")
+                return self._emit("FLAT", 0.0, 0.0, ts)
+            if self._prev_action in ("BUY", "SELL"):
+                return self._emit(self._prev_action, self._sl, self._tp, ts)  # hold
+            if not flipped or not aligned:
+                return self._emit("FLAT", 0.0, 0.0, ts)
 
         px = float(h_c["close"].iloc[-1])
-        window = h_c.iloc[-self.struct_bars:]      # last N CLOSED bars (entry bar excluded)
-        raw = float(window["low"].min()) if s == 1 else float(window["high"].max())
-        dist = abs(px - raw)
+        if self.sl_mode == "manual":
+            # SL_MANUAL: fixed distance in account currency (EA: Manual_SL_Points * _Point).
+            # XAUUSD on FBS is 2 digits, point 0.01, contract 100 -> 1000 points = $10.00.
+            dist = self.manual_sl_usd
+        else:
+            window = h_c.iloc[-self.struct_bars:]   # last N CLOSED bars incl. the signal bar
+            raw = float(window["low"].min()) if s == 1 else float(window["high"].max())
+            dist = abs(px - raw)
         if dist < self.min_sl_dist:
-            logger.info(f"[{self.name}] structure stop too tight ({dist:.2f}) -> skip")
+            logger.info(f"[{self.name}] stop too tight ({dist:.2f}) -> skip")
             return self._emit("FLAT", 0.0, 0.0, ts)
         sl = px - dist if s == 1 else px + dist
-        tp = px + self.tp_ratio * dist if s == 1 else px - self.tp_ratio * dist
+        if self.tp_ratio > 0:
+            tp = px + self.tp_ratio * dist if s == 1 else px - self.tp_ratio * dist
+        else:
+            tp = 0.0                                # no TP; exit is the reverse signal or SL
 
         mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
         if _book_conflict(mt5_symbol, side, self.magic):
