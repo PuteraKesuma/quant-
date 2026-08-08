@@ -1105,3 +1105,32 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-07-17 04:15:18 UTC** HB  Sehat (heartbeat). advisor UP. advisor entries=16; terakhir: {"ts": "2026-07-16T19:35:48.498196+00:00", "ticket": 1909865138, "symbol": "XAUUSD", "magic": 920622, "direction": "SHORT", "entry_price": 3973.79, "volume": 0.01, "open_time": "20...
 - **2026-07-17 04:45:31 UTC** HB  Sehat (heartbeat). advisor UP. advisor entries=16; terakhir: {"ts": "2026-07-16T19:35:48.498196+00:00", "ticket": 1909865138, "symbol": "XAUUSD", "magic": 920622, "direction": "SHORT", "entry_price": 3973.79, "volume": 0.01, "open_time": "20...
 - **2026-07-17 05:15:44 UTC** HB  Sehat (heartbeat). advisor UP. advisor entries=16; terakhir: {"ts": "2026-07-16T19:35:48.498196+00:00", "ticket": 1909865138, "symbol": "XAUUSD", "magic": 920622, "direction": "SHORT", "entry_price": 3973.79, "volume": 0.01, "open_time": "20...
+- **2026-08-07 13:17:53 UTC** ON  [shadow] Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan).
+- **2026-08-07 13:17:55 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-eterna_xau-0)
+- **2026-08-07 13:17:55 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 13:48:05 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 14:18:15 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 14:48:31 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 15:18:57 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 15:49:08 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 16:19:18 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 16:49:30 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 17:19:42 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 17:49:53 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 18:20:03 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 18:50:13 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 19:20:22 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 19:50:33 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 20:20:54 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 20:51:01 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 21:21:06 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 21:51:11 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 22:21:18 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 22:51:25 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 23:21:32 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-07 23:51:41 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 00:21:54 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 00:52:08 UTC** HB  [shadow] Sehat. slots=eterna_xau. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 01:18:14 UTC** ON  [shadow] Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan).
+- **2026-08-08 01:18:15 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-eterna_xau-0)
+- **2026-08-08 01:18:15 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
