@@ -1134,3 +1134,4 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-08 01:18:14 UTC** ON  [shadow] Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan).
 - **2026-08-08 01:18:15 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-eterna_xau-0)
 - **2026-08-08 01:18:15 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 01:24:23 UTC** BK  [backup] Mulai cadangan otomatis.
