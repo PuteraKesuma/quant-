@@ -3,3 +3,4 @@
 {"ts": "2026-07-15T09:57:36.303661Z", "mode": "LIVE", "target": "FLAT", "cur": "FLAT", "action": "HOLD-FLAT", "executed": "hold", "rsi2": NaN, "close": 29744.2, "sma200": 26399.5, "sma5": 29640.8}
 {"ts": "2026-07-15T22:15:46.884778Z", "mode": "LIVE", "target": "FLAT", "cur": "FLAT", "action": "HOLD-FLAT", "executed": "hold", "rsi2": 21.1, "close": 29553.5, "sma200": 26421.8, "sma5": 29563.1}
 {"ts": "2026-07-16T22:15:03.052516Z", "mode": "LIVE", "target": "LONG", "cur": "FLAT", "action": "OPEN LONG", "executed": "opened", "rsi2": 2.2, "close": 29018.5, "sma200": 26438.3, "sma5": 29283.4}
+{"ts": "2026-08-08T13:16:07.113216Z", "mode": "LIVE", "target": "FLAT", "cur": "FLAT", "action": "HOLD-FLAT", "executed": "hold", "rsi2": 80.4, "close": 29735.4, "sma200": 26703.7, "sma5": 29426.1}

@@ -1157,3 +1157,60 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-08 05:50:00 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
 - **2026-08-08 06:20:07 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
 - **2026-08-08 06:30:02 UTC** BK  [backup] Mulai cadangan otomatis.
+- **2026-08-08 06:30:05 UTC** CMT [backup] 5 perubahan otomatis di-commit (jangan biarkan kerja menganggur).
+- **2026-08-08 06:30:21 UTC** BK  [backup] Bundle dibuat: quant-backup-20260807-2330.bundle (4.24 MB, HEAD 497b461).
+- **2026-08-08 06:31:02 UTC** BK  [backup] ZIP dibuat: QUANT-BACKUP-20260807-2330.zip (9.33 MB). TARIK KE PC LOKAL.
+- **2026-08-08 06:31:10 UTC** OK  [backup] Push GitHub BERHASIL - riwayat aman di luar VPS.
+- **2026-08-08 06:31:10 UTC** BK  [backup] Selesai. HEAD 497b461.
+- **2026-08-08 06:50:21 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 07:20:33 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 07:50:49 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 08:21:01 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 08:51:11 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 09:21:26 UTC** HB  [shadow] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 09:33:27 UTC** ON  [shadow] Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan).
+- **2026-08-08 09:33:33 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-zrev_xau-ZREV-0)
+- **2026-08-08 09:33:33 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 10:03:51 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 10:34:02 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 11:04:11 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 11:34:12 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 12:04:33 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 12:34:35 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 13:05:03 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 13:35:18 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 14:05:47 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 14:36:08 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 15:06:15 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 15:36:42 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 16:06:51 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 16:37:17 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 17:07:40 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 17:37:55 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 18:08:23 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 18:38:33 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 19:08:40 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 19:38:52 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 20:09:09 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 20:39:19 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 21:09:35 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 21:39:51 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 22:09:57 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 22:40:09 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 23:10:21 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-08 23:40:40 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 00:11:01 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 00:41:24 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 01:11:45 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 01:41:58 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 02:12:12 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 02:42:27 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 03:12:47 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 03:42:51 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 04:13:03 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 04:43:15 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 05:13:45 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 05:36:43 UTC** WRN [shadow] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-09 05:43:48 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 06:14:09 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
+- **2026-08-09 06:30:06 UTC** BK  [backup] Mulai cadangan otomatis.
