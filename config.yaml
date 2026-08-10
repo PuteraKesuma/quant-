@@ -194,7 +194,16 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
-      enabled: false        # OFF 2026-08-10 atas permintaan user. Reversible: set true + restart brain.
+      enabled: true         # ON lagi 2026-08-10: user memilih menjalankan 4 sleeve.
+                            #   Dasar angka (research/portfolio_3vs4.py, rasio lot NYATA 3:2:1:1):
+                            #     3 sleeve            CAGR 43.0% maxDD -14.4% Calmar 2.99 hijau 68%
+                            #     4 sleeve REALISTIS  CAGR 42.0% maxDD -12.5% Calmar 3.37 hijau 71%
+                            #   ZREV menambah nilai lewat PENGURANGAN RISIKO, bukan return
+                            #   (CAGR praktis sama). Perhatikan: 4 sleeve versi IDEAL (tanpa
+                            #   memodelkan _book_conflict) justru LEBIH BURUK - Calmar 2.63 -
+                            #   karena zrev & eterna (korelasi +0.83) menumpuk risiko searah.
+                            #   Yang membuatnya bagus justru pemblokiran itu sendiri.
+                            # OFF sementara 2026-08-10 atas permintaan user. Reversible kapan saja.
                             #   EFEK SAMPING YANG MENGUNTUNGKAN: zrev berkorelasi +0.83 dengan eterna
                             #   (kembar, sama-sama trend-follow emas) dan 920622 ada di governor.magics
                             #   sementara eterna (920627) tidak -> selama zrev hidup, _book_conflict()
