@@ -1268,3 +1268,20 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-10 05:57:23 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
 - **2026-08-10 06:27:49 UTC** HB  [shadow] Sehat. slots=orb30_nas,zrev_xau,eterna_xau,eterna_asli. MT5 UP. sinyal terakhir=FLAT
 - **2026-08-10 06:30:10 UTC** BK  [backup] Mulai cadangan otomatis.
+- **2026-08-10 06:30:20 UTC** CMT [backup] 4 perubahan otomatis di-commit (jangan biarkan kerja menganggur).
+- **2026-08-10 06:30:26 UTC** BK  [backup] Bundle dibuat: quant-backup-20260809-2330.bundle (4.3 MB, HEAD b11b265).
+- **2026-08-10 06:32:28 UTC** BK  [backup] ZIP dibuat: QUANT-BACKUP-20260809-2330.zip (9.61 MB). TARIK KE PC LOKAL.
+- **2026-08-10 06:33:01 UTC** OK  [backup] Push GitHub BERHASIL - riwayat aman di luar VPS.
+- **2026-08-10 06:33:02 UTC** CLN [backup] Cadangan lama dibuang: quant-backup-20260807-0616.bundle
+- **2026-08-10 06:33:02 UTC** CLN [backup] Cadangan lama dibuang: QUANT-BACKUP-20260807-0628.zip
+- **2026-08-10 06:33:02 UTC** BK  [backup] Selesai. HEAD b11b265.
+- **2026-08-10 07:01:00 UTC** ON  [shadow] Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan).
+- **2026-08-10 07:01:07 UTC** SIG [shadow] eterna_xau:  -> FLAT  sl=0.0 tp=0.0  (XAUUSD-zrev_xau-ZREV-0)
+- **2026-08-10 07:01:08 UTC** HB  [shadow] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. orbmgr UP. sinyal terakhir=FLAT
+- **2026-08-10 07:48:03 UTC** ON  [wd] Watchdog START. Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5.
+- **2026-08-10 07:48:06 UTC** ERR [wd] xau_executor MATI - slot XAU tidak mengirim order sama sekali. Menghidupkan ulang...
+- **2026-08-10 07:48:09 UTC** SIG [wd] zrev_xau:  -> FLAT  sl=0.0 tp=0.0
+- **2026-08-10 07:48:11 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-10 07:57:07 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-10 08:10:59 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-10 08:18:12 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
