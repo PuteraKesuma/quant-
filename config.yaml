@@ -397,6 +397,30 @@ live:
         history_bars: 30000 # ~500 bar H1 dari M1
 
     # =================================================================================
+    # DUMMY FLOW TEST (magic 920699) — membuktikan rantai brain -> EA -> MT5 benar-benar
+    # mengeksekusi. Siklus 1 menit: FLAT -> BUY -> FLAT -> SELL, berulang.
+    #
+    # Dipakai 2026-08-10 karena /health menunjukkan EA XAUUSD "connected=False" padahal
+    # log Experts memperlihatkan heartbeat rajin. Sebabnya: KEDUA EA (chart XAUUSD dan
+    # chart US100) polling ?symbol=NAS100, karena ServerSymbol di chart XAUUSD masih
+    # memakai default EA (NAS100). Dummy ini pasang di XAUUSD supaya begitu ServerSymbol
+    # diperbaiki, eksekusi langsung terlihat.
+    #
+    # !!! SLOT INI MENGIRIM ORDER SUNGGUHAN DI DEMO DAN MEMBAKAR SPREAD TIAP SIKLUS.
+    # !!! MATIKAN (enabled: false) BEGITU rantai terbukti. Uji serupa 2026-07-08
+    # !!! (commit 7c26229) menghabiskan $1.34 spread sebelum dimatikan.
+    # =================================================================================
+    - name: flowtest_dummy
+      enabled: false        # TERBUKTI & DIMATIKAN 2026-08-10 10:40 UTC. Bukti round-trip penuh:
+                            #   10:39:16 SELL masuk @4358.66 'flowtest_dummy'
+                            #   10:40:06 BUY keluar @4359.28 'xauexec_close'  -$0.62 (spread)
+                            #   Rantai brain -> xau_executor -> MT5 terbukti utuh TANPA EA.
+      type: dummy
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920699         # magic dummy yang sama dipakai di uji 2026-07-08
+
+    # =================================================================================
     # ETERNA ASLI — rekonstruksi dari riwayat deal user (magic 920641, 28 Jul-5 Agu 2026).
     # Dijalankan BERDAMPINGAN dengan eterna_xau (920627) sebagai pembanding jujur:
     # versi user yang benar-benar pernah live vs versi hasil riset 24 fase.
