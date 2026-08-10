@@ -194,7 +194,14 @@ live:
     #     session_end_utc: "20:00"
 
     - name: zrev_xau        # Z Strategy: PURE always-in Donchian stop-and-reverse XAUUSD 1H
-      enabled: true         # 2026-08-08 PORTOFOLIO: dinyalakan lagi sebagai sleeve (bobot 14%, lot 0.01).
+      enabled: false        # OFF 2026-08-10 atas permintaan user. Reversible: set true + restart brain.
+                            #   EFEK SAMPING YANG MENGUNTUNGKAN: zrev berkorelasi +0.83 dengan eterna
+                            #   (kembar, sama-sama trend-follow emas) dan 920622 ada di governor.magics
+                            #   sementara eterna (920627) tidak -> selama zrev hidup, _book_conflict()
+                            #   MEMBLOKIR eterna tiap kali zrev pegang XAU searah. Dengan zrev mati,
+                            #   eterna dapat giliran penuh dan bobot efektifnya tidak lagi fiktif.
+                            #   Portofolio jadi 3 sleeve: ORB 0.03, RSI2 0.02, ETERNA 0.01.
+                            # 2026-08-08 PORTOFOLIO: pernah dinyalakan sebagai sleeve (bobot 14%, lot 0.01).
                             #   CATATAN: korelasi bulanan ZREV vs ETERNA = +0.83 (sama-sama trend-follow
                             #   emas). Karena 920622 ADA di governor.magics sementara eterna (920627)
                             #   tidak, _book_conflict() akan MEMBLOKIR eterna saat zrev sudah pegang arah
