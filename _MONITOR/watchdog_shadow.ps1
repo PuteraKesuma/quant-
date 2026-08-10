@@ -51,6 +51,18 @@ function BrainUp {
     return [bool]$p
 }
 
+function OrbMgrUp {
+    $p = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+         Where-Object { $_.CommandLine -match "pipeline\.live\.orb_stop_manager" }
+    return [bool]$p
+}
+
+function StartOrbMgr {
+    Start-Process -FilePath $Py -ArgumentList "-m", "pipeline.live.orb_stop_manager" `
+        -WorkingDirectory $Root -WindowStyle Hidden `
+        -RedirectStandardOutput "$MonDir\orbmgr_out.log" -RedirectStandardError "$MonDir\orbmgr_err.log"
+}
+
 function Mt5Up {
     return [bool](Get-Process terminal64 -ErrorAction SilentlyContinue)
 }
@@ -67,9 +79,11 @@ $lastRestart    = (Get-Date).AddHours(-1)
 $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
+$lastOrbTry     = (Get-Date).AddHours(-1)
 $lastAction     = ""
+$OrbCooldownMin = 3
 
-J "ON " "Watchdog shadow START. Menjaga: BRAIN + MT5 saja (advisor/liqmgr/orbmgr/governor SENGAJA tidak dijalankan)."
+J "ON " "Watchdog START. Menjaga: BRAIN + MT5 + ORB_STOP_MANAGER. (advisor/liqmgr/governor SENGAJA tidak dijalankan — advisor membakar kredit API Anthropic.)"
 
 while ($true) {
     $now = Get-Date
@@ -119,6 +133,18 @@ while ($true) {
         }
     }
 
+    # ---------- 2b. ORB stop manager hidup? ----------
+    # Sleeve ORB (bobot TERBESAR, lot 0.03) TIDAK lewat EA — manager ini menempatkan
+    # pending STOP langsung via MT5 Python API. Kalau dia mati, ORB hilang total dan
+    # tidak ada tanda apa pun di /health (health hanya memantau slot brain).
+    if (-not (OrbMgrUp)) {
+        if (($now - $lastOrbTry).TotalMinutes -ge $OrbCooldownMin) {
+            J "ERR" "orb_stop_manager MATI - sleeve ORB (43% bobot) tidak jalan. Menghidupkan ulang..."
+            StartOrbMgr
+            $lastOrbTry = $now
+        }
+    }
+
     # ---------- 3. rekam sinyal berkala (bukti shadow: apa yang DIPUTUSKAN brain) ----------
     if ($healthy -and ($now - $lastSignalPoll).TotalMinutes -ge $SignalPollMin) {
         try {
@@ -143,7 +169,9 @@ while ($true) {
     if (($now - $lastHeartbeat).TotalMinutes -ge $HeartbeatMin) {
         $mt5txt = "MT5 UP"
         if (-not (Mt5Up)) { $mt5txt = "MT5 DOWN" }
-        J "HB " ("Sehat. slots={0}. {1}. sinyal terakhir={2}" -f $slots, $mt5txt, $lastAction)
+        $orbtxt = "orbmgr UP"
+        if (-not (OrbMgrUp)) { $orbtxt = "orbmgr DOWN" }
+        J "HB " ("Sehat. slots={0}. {1}. {2}. sinyal terakhir={3}" -f $slots, $mt5txt, $orbtxt, $lastAction)
         $lastHeartbeat = $now
     }
 

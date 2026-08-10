@@ -116,10 +116,16 @@ live:
     - name: orb30_nas        # NAS100 â€” REPRODUCED 2026-06-28 (full live logic, M1 fill):
                              #   OOS PF 1.40, IS 1.28, 6/6 thn hijau, MC 5th-pct 1.04, 0% order invalid.
                              #   Edge nyata tapi TIPIS (exp ~0.08R). Klaim lama "1.52" sedikit optimis.
-      enabled: true          # 2026-08-08 PORTOFOLIO: dinyalakan sebagai sleeve dengan bobot TERBESAR
-                             #   (inverse-vol dari data 2021-2025 memberi ORB 43%). orb_stop_manager
-                             #   TIDAK dijalankan -> slot EA (market entry) yang aktif, dan itu memang
-                             #   versi yang di-backtest di research/portfolio_audit.py::nas_dollars.
+      enabled: false         # 2026-08-10 DIKEMBALIKAN ke false: EA ternyata TIDAK PERNAH menempel di
+                             #   chart NAS100 (health menunjukkan EA NAS100 diam 45 jam), jadi slot EA
+                             #   tak akan pernah eksekusi. orb_stop_manager MENGAMBIL ALIH lagi — dia
+                             #   menempatkan pending STOP langsung lewat MT5 Python API, TANPA butuh EA.
+                             #   Manager memilih slot lewat type=="orb" + params.pending_stop dan TIDAK
+                             #   membaca `enabled`, jadi enabled:false justru WAJIB di sini supaya brain
+                             #   tidak ikut mengirim sinyal ke EA -> mencegah entry DOBEL.
+                             #   Bonus: pending STOP mengunci harga di batas range, bukan di close M1
+                             #   berikutnya -> merebut slippage +4,75..+16,30 pt (commit e194775).
+                             # 2026-08-08 PORTOFOLIO: bobot TERBESAR (inverse-vol 43%), lot 0.03.
                              # 2026-07-04: EA market-slot OFF. The orb_stop_manager (brain-side) owns a
                              #   REAL pending STOP at the range boundary for magic 920617 -> reclaims the
                              #   +4.75..+16.30 pt entry slippage the market EA gave (signal_logic_audit.py).
