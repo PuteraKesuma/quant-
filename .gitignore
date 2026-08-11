@@ -37,3 +37,9 @@ tools/Autologon64.exe
 
 # detak watchdog: ditulis ulang tiap 30 detik, jangan cemari riwayat auto-commit
 _MONITOR/watchdog_alive.txt
+
+# salinan MT5 terisolasi untuk Strategy Tester (2026-08-11). 1 GB, dan log agent-nya
+# sendiri bisa 113 MB sekali jalan. Auto-backup memakai `git add -A`, jadi tanpa baris
+# ini satu kali backup akan mencoba meng-commit satu giga biner ke GitHub.
+# Cara membuatnya ulang ada di _DOC/uji_ea_mt5.md - tidak perlu disimpan di riwayat.
+mt5_tester/

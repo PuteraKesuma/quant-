@@ -1371,3 +1371,61 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-11 06:56:34 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-11 07:26:42 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-11 07:57:08 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 08:00:11 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 08:15:27 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 08:15:27 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 08:27:47 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-11 08:28:04 UTC** HB  [wd] Sehat. slots=. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 08:30:37 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 08:30:37 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 08:45:52 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 08:45:52 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 08:57:42 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 09:01:17 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 09:01:17 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 09:16:32 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 09:16:32 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 09:27:48 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 09:31:52 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 09:31:52 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 09:47:08 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 09:47:08 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 09:58:00 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 10:02:34 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 10:02:34 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 10:17:50 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 10:17:50 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 10:28:00 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 10:33:05 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 10:33:05 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 10:48:21 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 10:48:21 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 10:58:01 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 11:03:39 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 11:03:39 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 11:18:42 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 11:18:42 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 11:28:23 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 11:34:00 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 11:34:00 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 11:49:19 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 11:49:19 UTC** SIG [wd] eterna_asli: FLAT -> SELL  sl=4367.48 tp=0.0
+- **2026-08-11 11:58:30 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 12:04:38 UTC** SIG [wd] eterna_xau: SELL -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 12:28:42 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 12:58:46 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 13:28:48 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 13:59:00 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 14:29:17 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 14:59:24 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 15:29:54 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 16:00:08 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 16:30:11 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 17:00:25 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 17:30:33 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 18:00:43 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 18:30:52 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 19:01:05 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 19:31:13 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 20:01:23 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 20:31:38 UTC** HB  [wd] Sehat. slots=eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
