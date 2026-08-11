@@ -57,6 +57,7 @@ $Mt5CooldownMin     = 5
 $HeartbeatMin       = 30
 $SignalPollMin      = 15
 $ProbeMin           = 5      # cek MT5 benar-benar bisa trading (bukan cuma prosesnya ada)
+$GuardCheckMin      = 2      # seberapa sering log brain dipindai untuk pemblokiran eterna
 $LockedWarnMin      = 30     # jangan spam jurnal saat Algo Trading mati
 $PushCheckHours     = 6      # seberapa sering umur push GitHub diperiksa
 $PushStaleHours     = 36     # lewat ini, cadangan off-VPS dianggap basi
@@ -111,6 +112,8 @@ $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
 $lastProbe      = (Get-Date).AddHours(-1)
+$lastGuardCheck = (Get-Date).AddHours(-1)
+$guardCount     = -1         # -1 = belum pernah dipindai; jangan banjiri jurnal saat start
 $lastLockedWarn = (Get-Date).AddHours(-24)
 $lastPushCheck  = (Get-Date).AddHours(-24)
 $lastAction     = ""
@@ -241,6 +244,32 @@ while ($true) {
             }
         } catch { }
         $lastSignalPoll = $now
+    }
+
+    # ---------- 6b. eterna diblokir zrev? ----------
+    # LUBANG YANG DITUTUP 2026-08-11: kalau _book_conflict memblokir eterna, dia meng-emit
+    # FLAT - persis sama dengan eterna yang memang tidak punya sinyal. Di jurnal, "diblokir"
+    # dan "menunggu" terlihat IDENTIK. Padahal simulasi per-trade menunjukkan 53,4% entry
+    # eterna kena blokir (research/blocking_akurat.py), jadi ini bukan kasus langka.
+    # Alasannya cuma tercatat di brain_err.log yang tidak pernah dibaca siapa pun.
+    # Di sini log itu dipindai dan setiap pemblokiran BARU diangkat ke jurnal.
+    #
+    # Asimetrinya disengaja, bukan bug: zrev (920622) ada di governor.magics, eterna
+    # (920627) tidak, jadi zrev selalu menang saat keduanya searah. Dibiarkan karena
+    # korelasi keduanya +0,83. Yang tidak boleh adalah itu terjadi TANPA TERLIHAT.
+    if (($now - $lastGuardCheck).TotalMinutes -ge $GuardCheckMin) {
+        $lastGuardCheck = $now
+        $hits = @(Get-Content (Join-Path $MonDir "brain_err.log") -Tail 4000 -ErrorAction SilentlyContinue |
+                  Select-String -Pattern "net-exposure guard")
+        $n = $hits.Count
+        if ($guardCount -lt 0 -or $n -lt $guardCount) {
+            $guardCount = $n              # pemindaian pertama, atau brain restart -> log baru
+        } elseif ($n -gt $guardCount) {
+            foreach ($h in $hits[($guardCount)..($n - 1)]) {
+                J "BLK" ("ETERNA DIBLOKIR - zrev sudah pegang XAU searah, entry eterna dibatalkan. {0}" -f $h.Line.Trim())
+            }
+            $guardCount = $n
+        }
     }
 
     # ---------- 7. umur cadangan off-VPS ----------
