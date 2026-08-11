@@ -1351,3 +1351,6 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-11 03:25:09 UTC** ON  [wd] Watchdog START (pid 5176, dipanggil Scheduled Task). Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5.
 - **2026-08-11 03:25:13 UTC** SIG [wd] zrev_xau:  -> FLAT  sl=0.0 tp=0.0
 - **2026-08-11 03:25:14 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 03:32:28 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-11 03:33:33 UTC** RST [wd] Brain DOWN (3 cek gagal) - menjalankan ulang...
+- **2026-08-11 03:34:04 UTC** OK  [wd] Brain PULIH - health OK lagi.
