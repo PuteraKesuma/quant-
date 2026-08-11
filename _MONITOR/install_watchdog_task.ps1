@@ -58,6 +58,15 @@ $aksi = New-ScheduledTaskAction -Execute "powershell.exe" `
         -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Script`"" `
         -WorkingDirectory "C:\Quant"
 
+# TRIGGER "Once" DENGAN WAKTU MULAI DI MASA LALU - jangan dihapus.
+# Ini yang benar-benar menyalakan repetisi 5 menit. Repetisi yang cuma menempel di
+# trigger AtLogOn/AtStartup baru hidup SETELAH login atau boot berikutnya: sesaat
+# setelah pemasangan, NextRunTime kosong dan tidak ada jaring pengaman sama sekali.
+# Terbukti 2026-08-11: watchdog dibunuh untuk diuji, dan selama 7 menit tidak ada
+# yang menghidupkannya karena persis lubang ini.
+$tSekarang = New-ScheduledTaskTrigger -Once -At (Get-Date).Date
+$tSekarang.Repetition = $rep
+
 $tLogon = New-ScheduledTaskTrigger -AtLogOn -User $User
 $tLogon.Repetition = $rep
 
@@ -76,12 +85,12 @@ $settings = New-ScheduledTaskSettingsSet `
             -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 Register-ScheduledTask -TaskName $TaskName -Action $aksi `
-    -Trigger @($tLogon, $tBoot) -Principal $principal -Settings $settings `
+    -Trigger @($tSekarang, $tLogon, $tBoot) -Principal $principal -Settings $settings `
     -Description "Menjaga watchdog trading tetap hidup. Repetisi 5 menit + IgnoreNew = penjaga-nya-penjaga. Interactive karena MT5 API butuh sesi desktop." `
     -Force | Out-Null
 
 Write-Host "  [ OK ] Task '$TaskName' terpasang."
-Write-Host "         trigger  : saat login + saat boot (delay 3 menit)"
+Write-Host "         trigger  : langsung aktif + saat login + saat boot (delay 3 menit)"
 Write-Host "         repetisi : tiap 5 menit selama 10 tahun, IgnoreNew"
 Write-Host "         akun     : $User (Interactive, hak tertinggi)"
 Write-Host ""

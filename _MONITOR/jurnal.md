@@ -1302,3 +1302,22 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-11 01:56:29 UTC** ERR [wd] Belum pernah ada catatan push GitHub sukses. Cadangan off-VPS BELUM terbukti.
 - **2026-08-11 01:56:30 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-11 01:59:34 UTC** BK  [backup] Mulai cadangan otomatis.
+- **2026-08-11 01:59:40 UTC** CMT [backup] 15 perubahan otomatis di-commit (jangan biarkan kerja menganggur).
+- **2026-08-11 01:59:49 UTC** BK  [backup] Bundle dibuat: quant-backup-20260810-1859.bundle (4.36 MB, HEAD 49de55a).
+- **2026-08-11 02:01:19 UTC** BK  [backup] ZIP dibuat: QUANT-BACKUP-20260810-1859.zip (9.53 MB). TARIK KE PC LOKAL.
+- **2026-08-11 02:01:33 UTC** WRN [backup] Push GitHub GAGAL (kredensial belum tersimpan). 2 commit masih HANYA di VPS ini. Cadangan off-VPS bergantung pada ZIP di Downloads.
+- **2026-08-11 02:01:33 UTC** CLN [backup] Cadangan lama dibuang: quant-backup-20260807-1902.bundle
+- **2026-08-11 02:01:33 UTC** CLN [backup] Cadangan lama dibuang: QUANT-BACKUP-20260807-1902.zip
+- **2026-08-11 02:01:33 UTC** BK  [backup] Selesai. HEAD 49de55a.
+- **2026-08-11 02:15:02 UTC** ON  [wd] Watchdog START (pid 1544, dipanggil Scheduled Task). Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5.
+- **2026-08-11 02:15:06 UTC** SIG [wd] zrev_xau:  -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 02:15:06 UTC** ERR [wd] Belum pernah ada catatan push GitHub sukses. Cadangan off-VPS BELUM terbukti.
+- **2026-08-11 02:15:06 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 02:20:02 UTC** ON  [wd] Watchdog START (pid 4108, dipanggil Scheduled Task). Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5.
+- **2026-08-11 02:20:07 UTC** SIG [wd] zrev_xau:  -> FLAT  sl=0.0 tp=0.0
+- **2026-08-11 02:20:07 UTC** ERR [wd] Belum pernah ada catatan push GitHub sukses. Cadangan off-VPS BELUM terbukti.
+- **2026-08-11 02:20:07 UTC** HB  [wd] Sehat. slots=zrev_xau,eterna_xau,eterna_asli. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-11 02:21:12 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-11 02:22:18 UTC** RST [wd] Brain DOWN (3 cek gagal) - menjalankan ulang...
+- **2026-08-11 02:22:49 UTC** OK  [wd] Brain PULIH - health OK lagi.
+- **2026-08-11 02:22:53 UTC** BK  [backup] Mulai cadangan otomatis.
