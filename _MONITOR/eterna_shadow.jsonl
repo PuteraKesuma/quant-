@@ -702,3 +702,6 @@
 {"action":"FLAT","ts":"2026-08-11 02:20:06","tp":0.0,"strategy":"zrev_xau","signal_id":"XAUUSD-zrev_xau-ZREV-0","sl":0.0}
 {"action":"FLAT","ts":"2026-08-11 02:20:07","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
 {"action":"FLAT","ts":"2026-08-11 02:20:07","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-11 02:35:09","tp":0.0,"strategy":"zrev_xau","signal_id":"XAUUSD-zrev_xau-ZREV-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-11 02:35:09","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-11 02:35:09","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-0","sl":0.0}

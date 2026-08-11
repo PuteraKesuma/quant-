@@ -1328,3 +1328,6 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-11 02:24:12 UTC** CLN [backup] Cadangan lama dibuang: quant-backup-20260807-2330.bundle
 - **2026-08-11 02:24:12 UTC** CLN [backup] Cadangan lama dibuang: QUANT-BACKUP-20260807-2330.zip
 - **2026-08-11 02:24:12 UTC** BK  [backup] Selesai. HEAD 60e032d.
+- **2026-08-11 02:41:09 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-11 02:42:16 UTC** RST [wd] Brain DOWN (3 cek gagal) - menjalankan ulang...
+- **2026-08-11 02:42:46 UTC** OK  [wd] Brain PULIH - health OK lagi.
