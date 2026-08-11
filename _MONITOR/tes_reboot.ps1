@@ -93,40 +93,66 @@ $baris.Add("")
 
 # ---------- 4. bukti paling keras: order sungguhan setelah boot ----------
 $baris.Add("## 3. Order sungguhan setelah boot (magic 920699)")
-$bootEpoch = [int][double]::Parse((Get-Date $boot -UFormat %s))
+
+# ---------------------------------------------------------------------------------
+#  JANGAN membandingkan deal.time dengan epoch waktu lokal. BUG 2026-08-11:
+#  `deal.time` memakai waktu SERVER broker (FBS = UTC+3), sementara bootEpoch dihitung
+#  dari waktu lokal. Selisih 3 jam itu membuat filter meloloskan deal sampai 3 jam
+#  SEBELUM boot - laporan pertama mengutip deal baseline pra-reboot sebagai bukti
+#  pasca-reboot dan menyatakan LULUS. Tesnya jadi tidak bisa gagal, yang lebih
+#  berbahaya daripada tes yang gagal.
+#
+#  Perbaikannya bebas zona waktu: catat NOMOR TIKET yang sudah ada saat skrip mulai,
+#  lalu tunggu tiket yang BELUM pernah terlihat. Tiket monoton naik dan tidak punya
+#  zona waktu, jadi tidak ada yang bisa salah tafsir.
+# ---------------------------------------------------------------------------------
+$tiketLama = & $Py -c @"
+import MetaTrader5 as m, datetime as dt
+m.initialize()
+d = m.history_deals_get(dt.datetime.now()-dt.timedelta(hours=6), dt.datetime.now()+dt.timedelta(hours=6)) or []
+print(','.join(str(x.ticket) for x in d if x.magic == 920699))
+m.shutdown()
+"@ 2>&1
+$tiketLama = ($tiketLama | Out-String).Trim()
+if (-not $tiketLama) { $tiketLama = "0" }
+
 $deals = ""
 for ($i = 0; $i -lt 48; $i++) {          # sampai 8 menit menunggu siklus dummy
     $deals = & $Py -c @"
 import MetaTrader5 as m, datetime as dt
+lama = set('$tiketLama'.split(','))
 m.initialize()
-d = m.history_deals_get(dt.datetime.now()-dt.timedelta(hours=2), dt.datetime.now()+dt.timedelta(hours=6)) or []
-d = [x for x in d if x.magic == 920699 and x.time >= $bootEpoch]
+d = m.history_deals_get(dt.datetime.now()-dt.timedelta(hours=6), dt.datetime.now()+dt.timedelta(hours=6)) or []
 for x in d:
-    print('%s  %-4s %-3s  %.2f lot @ %.2f  pnl %+.2f  %s' % (
-        dt.datetime.utcfromtimestamp(x.time).strftime('%H:%M:%S'),
-        'BUY' if x.type == 0 else 'SELL', 'IN' if x.entry == 0 else 'OUT',
-        x.volume, x.price, x.profit, x.comment))
+    if x.magic == 920699 and str(x.ticket) not in lama:
+        print('tiket %d  %s server  %-4s %-3s  %.2f lot @ %.2f  pnl %+.2f  %s' % (
+            x.ticket, dt.datetime.utcfromtimestamp(x.time).strftime('%H:%M:%S'),
+            'BUY' if x.type == 0 else 'SELL', 'IN' if x.entry == 0 else 'OUT',
+            x.volume, x.price, x.profit, x.comment))
 m.shutdown()
 "@ 2>&1
-    if (($deals | Measure-Object -Line).Lines -ge 2) { break }
+    $deals = ($deals | Out-String).TrimEnd()
+    if (($deals -split "`n" | Where-Object { $_.Trim() }).Count -ge 2) { break }
     Start-Sleep -Seconds 10
 }
-if (($deals | Measure-Object -Line).Lines -ge 2) {
-    $baris.Add("- **LULUS** - rantai brain -> xau_executor -> MT5 mengirim order sendiri setelah reboot,")
-    $baris.Add("  tanpa ada manusia yang login atau menjalankan apa pun.")
-} elseif ($deals) {
+$jmlDeal = ($deals -split "`n" | Where-Object { $_.Trim() }).Count
+if ($jmlDeal -ge 2) {
+    $baris.Add("- **LULUS** - rantai brain -> xau_executor -> MT5 mengirim order BARU setelah reboot,")
+    $baris.Add("  tanpa ada manusia yang login atau menjalankan apa pun. ($jmlDeal tiket baru)")
+} elseif ($jmlDeal -eq 1) {
     $baris.Add("- **SEBAGIAN** - ada order masuk tapi round-trip belum lengkap saat laporan dibuat.")
 } else {
-    $baris.Add("- **GAGAL** - tidak ada deal magic 920699 setelah boot. Rantai TIDAK mengeksekusi.")
+    $baris.Add("- **GAGAL** - tidak ada tiket baru magic 920699 setelah boot. Rantai TIDAK mengeksekusi.")
 }
 $baris.Add("")
 $baris.Add('```')
-$baris.Add($(if ($deals) { $deals } else { "(kosong)" }))
+foreach ($d in ($deals -split "`n")) { if ($d.Trim()) { $baris.Add($d.TrimEnd()) } }
+if (-not $deals) { $baris.Add("(kosong)") }
 $baris.Add('```')
 $baris.Add("")
 
 # ---------- vonis ----------
-$lulus = $adaSesi -and $sehat -and ($umurWd -le 120) -and ($pcode -eq 0) -and (($deals | Measure-Object -Line).Lines -ge 2)
+$lulus = $adaSesi -and $sehat -and ($umurWd -le 120) -and ($pcode -eq 0) -and ($jmlDeal -ge 2)
 $baris.Add("## Vonis")
 $baris.Add($(if ($lulus) {
     "**SEMUA LULUS.** Lapis 3 terbukti: VPS reboot -> Windows login sendiri -> watchdog naik -> rantai hidup -> order terkirim. Tidak ada satu langkah pun yang butuh manusia."
@@ -134,7 +160,7 @@ $baris.Add($(if ($lulus) {
     "**ADA YANG GAGAL.** Baca bagian di atas yang bertanda GAGAL. Jangan anggap sistem ini tahan reboot sampai semuanya lulus."
 }))
 $baris.Add("")
-$baris.Add("Jangan lupa: `flowtest_dummy` (magic 920699) masih NYALA dan membakar spread tiap siklus. Matikan di config.yaml begitu tes ini selesai dibaca.")
+$baris.Add('Jangan lupa: flowtest_dummy (magic 920699) masih NYALA dan membakar spread tiap siklus. Matikan di config.yaml begitu tes ini selesai dibaca.')
 
 Set-Content -Path $Out -Value ($baris -join "`r`n") -Encoding utf8
 J $(if ($lulus) { "OK " } else { "ERR" }) "Verifikasi pasca-reboot selesai. Hasil: $(if ($lulus) { 'SEMUA LULUS' } else { 'ADA YANG GAGAL' }). Laporan: $Out"
