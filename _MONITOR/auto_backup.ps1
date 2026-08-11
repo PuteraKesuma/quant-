@@ -1,5 +1,10 @@
 # =====================================================================================
-#  AUTO BACKUP — supaya keamanan kerja TIDAK bergantung pada ingatan siapa pun.
+#  AUTO BACKUP - supaya keamanan kerja TIDAK bergantung pada ingatan siapa pun.
+#
+#  CATATAN ENCODING: file ini WAJIB pure ASCII, alasannya sama persis dengan yang
+#  ditulis di watchdog_shadow.ps1 - PowerShell -File tanpa BOM membaca skrip memakai
+#  codepage sistem, dan sebuah em-dash pernah memecah sintaks sampai skrip gagal start
+#  diam-diam. Dua em-dash di file ini sudah diganti tanda hubung biasa (2026-08-11).
 #
 #  Latar: 2026-08-06 user kehilangan VPS beserta ~3 minggu kerja yang belum ter-commit.
 #  Yang selamat cuma karena ada ZIP off-VPS yang kebetulan dibuat manual. Skrip ini
@@ -12,7 +17,7 @@
 #    3. Buat ZIP kode+riset+jurnal (TANPA folder data 1 GB yang bisa ditarik ulang
 #       dari Dukascopy) ke Downloads.
 #    4. Coba push ke GitHub. Kalau kredensial belum ada, dicatat sebagai PERINGATAN
-#       supaya terlihat di jurnal — bukan gagal diam-diam.
+#       supaya terlihat di jurnal - bukan gagal diam-diam.
 #    5. Simpan hanya 5 cadangan terbaru; sisanya dibuang supaya disk tidak penuh.
 #
 #  PERINGATAN: ZIP berisi .env dengan ANTHROPIC_API_KEY asli. File ini untuk ditarik
@@ -80,6 +85,11 @@ $ahead = & $Git rev-list --count origin/vps-zrev-live..HEAD 2>$null
 & $Git push origin HEAD:vps-zrev-live 2>&1 | Out-Null
 $ahead2 = & $Git rev-list --count origin/vps-zrev-live..HEAD 2>$null
 if ($ahead2 -eq "0") {
+    # Penanda untuk watchdog: dia melapor kalau umur file ini lewat 36 jam. Sengaja
+    # ditulis HANYA saat push benar-benar sukses, supaya "cadangan aman" tidak pernah
+    # bisa disimpulkan dari sekadar skrip ini pernah jalan.
+    Set-Content -Path "C:\Quant\_MONITOR\last_push_ok.txt" `
+        -Value ("{0} UTC HEAD {1}" -f (NowUtc), $head) -Encoding ascii
     J "OK " "Push GitHub BERHASIL - riwayat aman di luar VPS."
 } else {
     J "WRN" "Push GitHub GAGAL (kredensial belum tersimpan). $ahead2 commit masih HANYA di VPS ini. Cadangan off-VPS bergantung pada ZIP di Downloads."

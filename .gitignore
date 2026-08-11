@@ -34,3 +34,6 @@ _DOC/vision/
 # artefak backup / binary tool (2026-08-06)
 vps-zrev-live.bundle
 tools/Autologon64.exe
+
+# detak watchdog: ditulis ulang tiap 30 detik, jangan cemari riwayat auto-commit
+_MONITOR/watchdog_alive.txt

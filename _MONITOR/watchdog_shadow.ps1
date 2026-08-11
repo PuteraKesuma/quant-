@@ -20,7 +20,17 @@
 #  SENGAJA TIDAK dijalankan: advisor (membakar kredit API Anthropic), liquidity_manager,
 #  monthly_governor. Jangan pakai watchdog_brain.ps1 yang lama - dia menghidupkan semua itu.
 #
-#  Jalankan:
+#  ------------------------------------------------------------------------------------
+#  SIAPA YANG MENJAGA WATCHDOG (ditambahkan 2026-08-11)
+#  Insiden 2026-08-10: watchdog dijalankan dari jendela terminal. Terminal ditutup ->
+#  watchdog mati -> brain/xauexec/orbmgr ikut mati dan TIDAK ADA yang menghidupkan lagi.
+#  Jurnal berhenti 10:19 UTC dan sisa hari itu kosong tanpa satu trade pun.
+#  Sekarang skrip ini HANYA dijalankan lewat Scheduled Task "Quant Watchdog", yang
+#  berulang tiap 5 menit selamanya dengan MultipleInstances=IgnoreNew. Mutex di bawah
+#  yang membuat pengulangan itu aman: instance kedua keluar diam-diam, jadi tick 5 menit
+#  itu murni berfungsi sebagai penjaga-nya-penjaga.
+#
+#  Jalankan (normalnya JANGAN manual, pakai AUTO_TRADING_ON.bat):
 #    powershell -ExecutionPolicy Bypass -File C:\Quant\_MONITOR\watchdog_shadow.ps1
 # =====================================================================================
 $ErrorActionPreference = "SilentlyContinue"
@@ -32,6 +42,9 @@ $MonDir    = "C:\Quant\_MONITOR"
 $Jurnal    = Join-Path $MonDir "jurnal.md"
 $HealthLog = Join-Path $MonDir "health_log.jsonl"
 $SigLog    = Join-Path $MonDir "eterna_shadow.jsonl"
+$AliveFile = Join-Path $MonDir "watchdog_alive.txt"
+$PushFile  = Join-Path $MonDir "last_push_ok.txt"
+$Probe     = Join-Path $MonDir "mt5_probe.py"
 $Mt5Exe    = "C:\Program Files\MetaTrader 5\terminal64.exe"
 $HealthUrl = "http://127.0.0.1:8000/health"
 $SignalUrl = "http://127.0.0.1:8000/signals?symbol=XAUUSD"
@@ -43,6 +56,10 @@ $ProcCooldownMin    = 3
 $Mt5CooldownMin     = 5
 $HeartbeatMin       = 30
 $SignalPollMin      = 15
+$ProbeMin           = 5      # cek MT5 benar-benar bisa trading (bukan cuma prosesnya ada)
+$LockedWarnMin      = 30     # jangan spam jurnal saat Algo Trading mati
+$PushCheckHours     = 6      # seberapa sering umur push GitHub diperiksa
+$PushStaleHours     = 36     # lewat ini, cadangan off-VPS dianggap basi
 
 function NowUtc { (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") }
 
@@ -51,6 +68,23 @@ function J($tag, $msg) {
     Add-Content -Path $Jurnal -Value $line -Encoding utf8
     Write-Host $line
 }
+
+# ---------------------------------------------------------------------------------
+#  MUTEX SINGLETON - inti dari pola "task berulang tiap 5 menit".
+#  Kalau sudah ada watchdog hidup, instance ini keluar TENANG (exit 0) tanpa menulis
+#  apa pun ke jurnal; kalau tidak ada, instance ini yang mengambil alih.
+#  AbandonedMutexException WAJIB ditangkap: kalau watchdog sebelumnya dibunuh paksa
+#  (persis skenario terminal ditutup), mutex ditinggalkan dalam keadaan abandoned dan
+#  WaitOne melempar exception - tapi kepemilikan TETAP diberikan. Tanpa catch ini,
+#  watchdog justru tidak akan pernah bangkit setelah crash: kebalikan dari tujuannya.
+# ---------------------------------------------------------------------------------
+$mutex = New-Object System.Threading.Mutex($false, "Global\QuantWatchdogShadow")
+try {
+    $punya = $mutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    $punya = $true
+}
+if (-not $punya) { exit 0 }
 
 function ProcUp($pattern) {
     $p = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
@@ -69,18 +103,27 @@ function Mt5Up { return [bool](Get-Process terminal64 -ErrorAction SilentlyConti
 
 # --- state ---
 $fails          = 0
+$probeFails     = 0
 $lastRestart    = (Get-Date).AddHours(-1)
 $lastXauTry     = (Get-Date).AddHours(-1)
 $lastOrbTry     = (Get-Date).AddHours(-1)
 $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
+$lastProbe      = (Get-Date).AddHours(-1)
+$lastLockedWarn = (Get-Date).AddHours(-24)
+$lastPushCheck  = (Get-Date).AddHours(-24)
 $lastAction     = ""
 
-J "ON " "Watchdog START. Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5."
+J "ON " ("Watchdog START (pid {0}, dipanggil Scheduled Task). Menjaga: BRAIN + XAU_EXECUTOR + ORB_STOP_MANAGER + MT5." -f $PID)
 
 while ($true) {
     $now = Get-Date
+
+    # ---------- 0. file detak: bukti hidup yang bisa dibaca dari luar ----------
+    # CEK_TRADING.bat membaca umur file ini. Umur > 2 menit = watchdog macet/mati,
+    # dan itu terbaca TANPA harus menebak-nebak dari daftar proses.
+    Set-Content -Path $AliveFile -Value ("{0} UTC pid={1}" -f (NowUtc), $PID) -Encoding ascii
 
     # ---------- 1. MetaTrader 5 ----------
     if (-not (Mt5Up)) {
@@ -88,6 +131,7 @@ while ($true) {
             J "ERR" "MetaTrader 5 MATI - semua sleeve kehilangan sumber bar. Menjalankan ulang..."
             Start-Process -FilePath $Mt5Exe
             $lastMt5Try = $now
+            $probeFails = 0
         }
     }
 
@@ -145,7 +189,41 @@ while ($true) {
         }
     }
 
-    # ---------- 5. rekam sinyal berkala ----------
+    # ---------- 5. MT5 BENAR-BENAR bisa trading? ----------
+    # Cek proses di langkah 1 LOLOS walau terminal duduk di dialog login atau tombol
+    # Algo Trading mati. Probe ini yang membedakannya (lihat _MONITOR/mt5_probe.py):
+    #   exit 1 MATI     -> restart terminal64 (setelah 2 kegagalan berturut-turut)
+    #   exit 2 TERKUNCI -> HANYA lapor. Restart tidak akan menyalakan tombol Algo
+    #                      Trading; itu keadaan GUI tersimpan yang cuma bisa diperbaiki
+    #                      manusia. Restart berulang justru mengaburkan jurnal.
+    if ((Mt5Up) -and ($now - $lastProbe).TotalMinutes -ge $ProbeMin) {
+        $pout = & $Py $Probe 2>&1
+        $pcode = $LASTEXITCODE
+        $lastProbe = $now
+        if ($pcode -eq 0) {
+            if ($probeFails -gt 0) { J "OK " "MT5 PULIH - bisa trading lagi. $pout" }
+            $probeFails = 0
+        } elseif ($pcode -eq 2) {
+            $probeFails = 0
+            if (($now - $lastLockedWarn).TotalMinutes -ge $LockedWarnMin) {
+                J "ERR" "MT5 login TAPI Algo Trading MATI - tidak ada order yang bisa terkirim. NYALAKAN tombol Algo Trading di MT5 (watchdog tidak bisa). $pout"
+                $lastLockedWarn = $now
+            }
+        } else {
+            $probeFails++
+            J "WRN" ("MT5 proses ada tapi tidak bisa dipakai ({0}/2). {1}" -f $probeFails, $pout)
+            if ($probeFails -ge 2 -and ($now - $lastMt5Try).TotalMinutes -ge $Mt5CooldownMin) {
+                J "RST" "MT5 macet (belum login / tidak merespons) - restart terminal64. SL/TP posisi tetap dijaga broker."
+                Get-Process terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+                Start-Sleep -Seconds 5
+                Start-Process -FilePath $Mt5Exe
+                $lastMt5Try = $now
+                $probeFails = 0
+            }
+        }
+    }
+
+    # ---------- 6. rekam sinyal berkala ----------
     if ($healthy -and ($now - $lastSignalPoll).TotalMinutes -ge $SignalPollMin) {
         try {
             $s = (Invoke-WebRequest -Uri $SignalUrl -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
@@ -165,7 +243,23 @@ while ($true) {
         $lastSignalPoll = $now
     }
 
-    # ---------- 6. heartbeat ----------
+    # ---------- 7. umur cadangan off-VPS ----------
+    # auto_backup.ps1 menulis last_push_ok.txt tiap kali push GitHub sukses. Kalau file
+    # itu basi, cadangan satu-satunya tinggal ZIP di VPS ini - dan VPS ini yang sudah
+    # pernah hilang sekali. Wajib berisik, bukan gagal diam-diam.
+    if (($now - $lastPushCheck).TotalHours -ge $PushCheckHours) {
+        $lastPushCheck = $now
+        if (Test-Path $PushFile) {
+            $umur = ($now - (Get-Item $PushFile).LastWriteTime).TotalHours
+            if ($umur -ge $PushStaleHours) {
+                J "ERR" ("Push GitHub terakhir sukses {0:N0} jam lalu (ambang {1} jam). Kerja terbaru HANYA ada di VPS ini." -f $umur, $PushStaleHours)
+            }
+        } else {
+            J "ERR" "Belum pernah ada catatan push GitHub sukses. Cadangan off-VPS BELUM terbukti."
+        }
+    }
+
+    # ---------- 8. heartbeat ----------
     if (($now - $lastHeartbeat).TotalMinutes -ge $HeartbeatMin) {
         $mt5txt = "MT5 UP";     if (-not (Mt5Up)) { $mt5txt = "MT5 DOWN" }
         $xetxt  = "xauexec UP"; if (-not (ProcUp "pipeline\.live\.xau_executor"))    { $xetxt  = "xauexec DOWN" }
