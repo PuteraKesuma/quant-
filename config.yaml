@@ -134,9 +134,20 @@ live:
       type: orb
       symbol: NAS100
       session: new_york      # cash open; dst_open shifts it 13:30 (summer) / 14:30 (winter) UTC
-      lot: 0.03              # 2026-08-08: 3 unit dari rasio portofolio 3:2:1:1 (ORB=43% bobot).
-                             #   Lot minimum 0.01 tidak bisa dipecah, jadi bobot inverse-vol
-                             #   didekati lewat RASIO LOT BILANGAN BULAT, bukan pecahan.
+      lot: 0.01              # DITURUNKAN dari 0.03 pada 2026-08-11 atas permintaan user, dan
+                             #   angkanya mendukung. Pada saldo $548 (research/modal_dan_bobot.py):
+                             #     0.03+0.01  CAGR 50.4%  maxDD -33.4%  Calmar 1.51  hijau 64%
+                             #     0.01+0.01  CAGR 43.2%  maxDD -21.9%  Calmar 1.97  hijau 55%
+                             #   Drawdown turun sepertiga; return turun jauh lebih sedikit.
+                             #   Rugi per trade persentil-90: $41.16 (7.5% akun) -> $13.72 (2.5%).
+                             #
+                             #   ⚠ EFEK SAMPING yang harus disadari: bobot RISIKO bergeser ke
+                             #   ETERNA 65% -> 85%, karena eterna 5,7x lebih bergejolak dari ORB.
+                             #   Jadi portofolio jadi lebih bergantung pada sleeve yang bukti
+                             #   statistiknya PALING LEMAH (DSR 0,0061; 74% profit dari 2026).
+                             #
+                             #   JANGAN naikkan lagi tanpa menghitung ulang - user minta tetap
+                             #   0.01 sampai ada alasan berbasis angka.
                              # US100 0.01 = $0.10/pt (WMT was 0.2 NQ100x)
       magic: 920617          # manager owns it now (EA gets no NAS100 signal -> leaves it alone)
       params:
