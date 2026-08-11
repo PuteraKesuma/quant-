@@ -14,10 +14,32 @@ import numpy as np, pandas as pd
 import MetaTrader5 as mt5
 
 SYMBOL, MAGIC, LOT = "US100", 920633, 0.02   # 2026-08-08: 2 unit dari rasio portofolio 3:2:1:1
-DRY_RUN = False                                 # LIVE 2026-08-08: sleeve RSI2 dalam portofolio 4-sleeve
-                                                # (bobot 29%, lot 0.02). Satu-satunya sleeve MEAN-REVERSION
-                                                # -> korelasi ~0.00 terhadap ZREV/ORB, itu sumbangan utamanya.
-                                                # Shadow 2026-08-06 saat rebuild; LIVE lagi sejak portofolio dipasang.
+DRY_RUN = True                                  # DIMATIKAN 2026-08-11 atas keputusan user, setelah audit
+                                                # (research/audit_orb_rsi2.py + audit_rsi2_stop.py) menemukan
+                                                # backtest dan kode ini BUKAN strategi yang sama. Task Windows
+                                                # "Quant RSI2 Sleeve" juga sudah di-disable; DRY_RUN=True ini
+                                                # lapis kedua supaya menjalankan file ini manual pun tidak
+                                                # mengirim order.
+                                                #
+                                                # EMPAT CACAT yang harus DIPERBAIKI DULU sebelum dinyalakan lagi:
+                                                #  1. target_dir() memanggil copy_rates_from_pos(D1,0,400) yang
+                                                #     menyertakan bar HARI INI yang MASIH TERBENTUK, lalu
+                                                #     memutuskan dari bar separuh jadi itu. Backtest memakai bar
+                                                #     SELESAI. Perbaikan: buang bar terakhir (rates[:-1]).
+                                                #  2. Batas hari beda: backtest pakai hari UTC 00:00, bar broker
+                                                #     FBS mulai 21:00 UTC. Efeknya net +1531 -> +830 (-46%).
+                                                #  3. DISASTER_STOP_PCT 5% tidak dimodelkan backtest sama sekali,
+                                                #     padahal kena 7 kali dari 113 trade - bukan "catastrophe
+                                                #     only". Untuk mean-reversion, stop memotong trade yang
+                                                #     justru akan pulih. -> +654.
+                                                #  4. BUG RE-ENTRY (paling parah): mesin-keadaan di target_dir()
+                                                #     tidak tahu posisi kena stop. Jalan harian berikutnya melihat
+                                                #     target LONG + posisi FLAT -> action "OPEN LONG" -> membuka
+                                                #     lagi, berulang tiap hari sampai close > SMA5. Sendirian
+                                                #     mengubah maxDD -28.7% jadi -49.4%. -> +291.
+                                                #
+                                                # Gabungan: angka yang dipakai portofolio +$1531 vs perkiraan
+                                                # live +$291 (-81%). Portofolio Calmar 2.99 -> 0.78.
 ENTRY_RSI, SMA_TREND, SMA_EXIT = 10, 200, 5
 DISASTER_STOP_PCT = 0.05                         # catastrophe backstop only (~-$148 at 0.01; wide on purpose)
 LOG = Path(r"C:\Quant\_MONITOR\reversal.jsonl")
