@@ -885,3 +885,7 @@
 {"action":"FLAT","ts":"2026-08-12 00:20:12","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-13763","sl":0.0}
 {"action":"FLAT","ts":"2026-08-12 00:35:33","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
 {"action":"FLAT","ts":"2026-08-12 00:35:33","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-13763","sl":0.0}
+{"action":"FLAT","ts":"2026-08-12 00:50:55","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-12 00:50:55","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-13763","sl":0.0}
+{"action":"FLAT","ts":"2026-08-12 01:05:58","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-12 01:05:58","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-13763","sl":0.0}

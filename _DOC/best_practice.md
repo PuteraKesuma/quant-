@@ -58,6 +58,44 @@ yang lolos, yang ditemukan adalah varian yang cocok dengan data itu.
 
 Sekali tes atas hipotesis yang punya alasan = 1 percobaan. Itu murah dan sah.
 
+### 1.4b Kalahkan beli-dan-tahan, atau tidak usah
+
+Kriteria yang paling sering hilang, dan yang paling cepat membongkar strategi emas.
+
+Pola waktu "masuk 18:00 UTC, tahan 8 jam, LONG" lolos **keempat** kriteria: tanda
+konsisten di kedua periode, PF out-of-sample 1,36, maxDD −28%, Calmar portofolio
+1,94 → 2,67. Lalu:
+
+```
+beli-dan-tahan emas 2024-2026 (tanpa biaya)  : +$1.976,68
+pola jam 18 (638 trade, dengan biaya)        : +$1.730,81
+```
+
+**Kalah dari tidak melakukan apa-apa**, setelah 638 kali membayar spread.
+
+Emas naik 2,2× di periode uji. Apa pun yang long-biased akan mencetak uang di situ.
+Itu menjelaskan pola yang berulang di SEMUA kandidat: eterna 74% profit dari 2026,
+H1 acceleration seluruh profitnya dari 2025-26, EA martingale +23,7% di 2026 dan
+−100% lima tahun. Bukan lima temuan berbeda — satu rezim yang sama dari lima sudut.
+
+### 1.4c Tanyakan: apakah trade ini BISA benar-benar terjadi?
+
+Kriteria statistik tidak cukup. Pencarian pola waktu menemukan "masuk 21:00 UTC,
+tahan 8 jam" dengan PF out-of-sample **1,69** dan Calmar portofolio 1,94 → **3,37**.
+Lolos semuanya. Lalu ketahuan: **FBS menutup XAUUSD jam 21:00–22:00 UTC.**
+
+```
+tick per jam UTC, 10 hari:  jam 20  36.223   jam 21  0   jam 22  45.038
+bar M1 Dukascopy per jam :  jam 21  16,4     jam lain ~49
+```
+
+Order tidak mungkin dipasang saat pasar tutup. Data Dukascopy punya sisa print tipis
+di situ dari batas sesi feed lain, dan "pola" itu sebenarnya gap melintasi jeda harian.
+
+Sebelum memercayai hasil apa pun: cek jam perdagangan nyata, cek kelengkapan data per
+jam, cek likuiditas di jam entry. Jam dengan tick jauh di bawah normal punya spread
+yang tidak terwakili oleh angka yang diukur siang hari.
+
 ### 1.5 Periksa konsentrasi
 
 Buang 5 trade terbaik. Masih untung?
