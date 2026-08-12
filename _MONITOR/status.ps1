@@ -57,9 +57,18 @@ if (ProcUp "pipeline\.live\.xau_executor") {
     Baris "XAU_EXECUTOR" "MATI" "brain tetap hitung TAPI nol order XAU terkirim - kegagalan diam"
 }
 if (ProcUp "pipeline\.live\.orb_stop_manager") {
-    Baris "ORB_MANAGER" "HIDUP" "sleeve ORB magic 920617 lot 0.03 (bobot 43%)"
+    # Lot DIBACA dari config, jangan ditulis mati. Teks lama "lot 0.03 (bobot 43%)"
+    # tertinggal dari susunan 4-sleeve dan masih tampil setelah lot diturunkan ke 0.01
+    # pada 2026-08-11 - dashboard yang berbohong persis jenis kegagalan diam yang
+    # sudah dua kali menggigit proyek ini.
+    # Diparse dengan YAML, bukan Select-String -Context: blok komentar di atas `lot:`
+    # panjangnya berubah-ubah, jadi pencarian berbasis jarak baris rapuh dan sempat
+    # menampilkan "?" begitu komentar bertambah.
+    $lot = & $Py -c "import yaml,io;c=yaml.safe_load(io.open(r'C:\Quant\config.yaml',encoding='utf-8'));print(next(('%.2f'%s['lot'] for s in c['live']['strategies'] if s['name']=='orb30_nas'),'?'))" 2>$null
+    if (-not $lot) { $lot = "?" }
+    Baris "ORB_MANAGER" "HIDUP" "sleeve ORB magic 920617 lot $lot"
 } else {
-    Baris "ORB_MANAGER" "MATI" "sleeve terbesar berhenti"
+    Baris "ORB_MANAGER" "MATI" "sleeve ORB berhenti"
 }
 
 # ---------- MT5 ----------
