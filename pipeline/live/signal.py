@@ -1516,6 +1516,13 @@ class EternaStrategy(BaseStrategy):
         now = pd.Timestamp.utcnow()
         ts = now.isoformat()
         self._reconcile()
+        if not self._adopted:
+            # Rekonsiliasi belum pernah berhasil -> kita TIDAK TAHU apakah ada posisi.
+            # Menghitung sinyal dari ketidaktahuan itulah yang menutup posisi hidup
+            # pada 2026-08-12. Tahan keadaan terakhir; poll berikutnya mencoba lagi.
+            logger.warning(f"[{self.name}] belum tersinkron dengan MT5 - menahan "
+                           f"'{self._prev_action}', tidak mengambil keputusan baru")
+            return self._emit(self._prev_action, self._sl, self._tp, ts)
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
             return self._emit("FLAT", 0.0, 0.0, ts)
@@ -1614,9 +1621,41 @@ class EternaStrategy(BaseStrategy):
         """
         try:
             import MetaTrader5 as mt5
+            # ---------------------------------------------------------------------------
+            #  INSIDEN 2026-08-12: restart brain MENUTUP posisi eterna yang sedang terbuka.
+            #  Runtutannya: 16:32:58 slot dimuat -> 16:32:59 executor menutup posisi.
+            #
+            #  Sebabnya urutan di evaluate(): _reconcile() dipanggil SEBELUM
+            #  self.data.recent_bars(), dan recent_bars itulah yang meng-inisialisasi MT5 di
+            #  proses brain. Jadi pada poll PERTAMA setelah restart, positions_get()
+            #  mengembalikan None, tidak ada yang diadopsi, _prev_action tetap "FLAT", lalu
+            #  strategi meng-emit FLAT dengan signal_id baru -> executor menutup posisi.
+            #
+            #  DUA perbaikan, keduanya perlu:
+            #    1. initialize() di sini - idempoten, True kalau sudah tersambung. Ini
+            #       menghapus ketergantungan pada urutan pemanggilan.
+            #    2. Guard positions_get() is None -> JANGAN tandai _adopted. Pola ini sudah
+            #       ada di ZRevStrategy._reconcile_position() sejak lama ("do NOT mark
+            #       reconciled / emit FLAT and close a live leg") tapi tidak pernah
+            #       diterapkan ke sini.
+            #
+            #  Bahayanya bukan kerugian $5,38 hari itu, tapi bahwa watchdog me-restart brain
+            #  secara OTOMATIS saat crash - artinya tiap pemulihan otomatis akan meratakan
+            #  posisi terbuka.
+            # ---------------------------------------------------------------------------
+            if not mt5.initialize():
+                logger.warning(f"[{self.name}] MT5 belum siap saat reconcile - "
+                               f"coba lagi poll berikutnya (posisi TIDAK disentuh)")
+                return
+
             mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
-            mine = [p for p in (mt5.positions_get(symbol=mt5_symbol) or [])
-                    if p.magic == self.magic]
+            raw = mt5.positions_get(symbol=mt5_symbol)
+            if raw is None:
+                logger.warning(f"[{self.name}] positions_get None saat reconcile - "
+                               f"coba lagi poll berikutnya (posisi TIDAK disentuh)")
+                return                      # JANGAN tandai _adopted; jangan pernah emit FLAT
+
+            mine = [p for p in raw if p.magic == self.magic]
             if mine:
                 p = mine[0]
                 act = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
@@ -1630,9 +1669,10 @@ class EternaStrategy(BaseStrategy):
                 self._prev_action, self._sl, self._tp = "FLAT", 0.0, 0.0
                 self._counter += 1
                 self._cached = None
-            self._adopted = True
+            self._adopted = True            # hanya setelah MT5 BENAR-BENAR menjawab
         except Exception as e:
-            logger.warning(f"[{self.name}] reconcile skipped ({e})")
+            # Sengaja TIDAK menandai _adopted: kalau MT5 error, poll berikutnya coba lagi.
+            logger.warning(f"[{self.name}] reconcile gagal, coba lagi ({e})")
 
 
 STRATEGY_TYPES = {

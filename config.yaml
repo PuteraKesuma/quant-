@@ -507,7 +507,34 @@ live:
     # di DEMO justru untuk menguji penilaian itu dengan data live, bukan dengan debat.
     # =================================================================================
     - name: eterna_asli
-      enabled: true
+      enabled: false        # DIMATIKAN 2026-08-12 setelah AKHIRNYA di-backtest.
+                            #
+                            # Slot ini dipasang 2026-08-10 sebagai rekonstruksi dari 3 deal di
+                            # MT5 lama, TANPA backtest sama sekali. Itu kesalahan urutan: angka
+                            # di bawah ini seharusnya ada SEBELUM dia menyentuh akun.
+                            #
+                            # research/eterna_asli_backtest.py, konfigurasi persis slot ini:
+                            #   H4  722 trade  net +571.16  PF 1.11  winrate 25%  maxDD -99.9%
+                            #   per tahun: 2021 -182 | 2022 +53 | 2023 -188 | 2024 -109
+                            #              2025 +614 | 2026 +374   -> 2021-2024 total -425
+                            #
+                            #   rata2 rugi -10.05, rata2 menang +32.50
+                            #   winrate impas 23.6%, winrate nyata 25.5% -> margin cuma +1.9 poin
+                            #
+                            # maxDD -99.9% itu yang menentukan: di akun $548 berarti habis, dan
+                            # dia berbagi saldo dengan eterna_xau. Margin 1,9 poin persen berarti
+                            # slippage sedikit di atas asumsi sudah cukup membuatnya negatif.
+                            #
+                            # Timeframe H4 memang TEBAKAN, tapi yang lain lebih buruk:
+                            #   M30 -2242.81 (PF 0.90) | H1 -461.43 (PF 0.97) | D1 +284.15 dari
+                            #   140 trade saja. Bukan soal salah timeframe.
+                            #
+                            # PEMBANDINGNYA sudah menang telak di setiap dimensi:
+                            #   eterna_xau (riset) 584 trade +2636.89 PF 1.53 maxDD -25.8% thn+ 6/6
+                            #
+                            # Tujuan slot ini - mengadu versi ingatan user vs versi riset - SUDAH
+                            # TERJAWAB, oleh 722 trade backtest, bukan oleh 3 trade live.
+                            # Live-nya sendiri: 3 trade, 3 rugi, -$29.29 (semua kena SL manual $10).
       type: eterna
       symbol: XAUUSD
       lot: 0.01
