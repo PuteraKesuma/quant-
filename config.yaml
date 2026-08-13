@@ -550,6 +550,73 @@ live:
         tp_ratio: 0.0       # 0 = TANPA TP (Manual_TP_Points = 0 di EA)
         min_sl_dist: 0.30
         history_bars: 60000 # ~1000 bar H4 butuh lebih banyak M1
+    # =================================================================================
+    # SMC XAU — Smart Money Concepts mekanis (magic 920643). Pending LIMIT di zona
+    # Order Block dengan EXPIRY, dikelola pipeline/live/smc_limit_manager.py.
+    # FBS mendukung ORDER_TIME_SPECIFIED (expiration_mode=15) dan stops_level=0.
+    #
+    # ATURANNYA (semua mekanis, bukan tafsir gambar — bisa di-backtest):
+    #   swing pivot : fractal +-k. Pivot bar i BARU DIPAKAI dari bar i+k (anti-lookahead)
+    #   BOS         : close menembus pivot terkonfirmasi. PERISTIWA, satu level sekali.
+    #   Order Block : candle berlawanan arah terakhir sebelum impulse; zona [low, high]
+    #   FVG         : low[t+1] > high[t-1] di dalam leg impulse (konfirmasi wajib)
+    #   entry       : LIMIT di ujung zona OB (mitigation), SL di luar zona + buffer,
+    #                 TP = rr x jarak SL, kedaluwarsa setelah expiry_bars bar.
+    #
+    # BUKTI (research/smc_xau_backtest.py, konfigurasi H4-B; 4 konfig x 4 TF = 16 trial):
+    #   n=96  net +$630.93  PF 1.81  winrate 43%  maxDD -14.8%  5/6 tahun hijau
+    #   margin di atas winrate impas +13.5 poin
+    #   dataran parameter: 21/21 varian untung; acuan BUKAN puncak di sumbu mana pun
+    #     k 2-5: +669/+631/+502/+512 | expiry 6-24: +356..+697 | rr 1.5-3.0: +363..+725
+    #   risk-adjusted (net per poin maxDD): SMC 42.5 vs beli-dan-tahan 11.9 vs
+    #     pembanding bodoh tanpa OB/FVG 14.5 / 9.9 / 24.3
+    #   korelasi bulanan rendah: 0.25 ke ETERNA, 0.11 ke ORB
+    #   portofolio: Calmar 1.73 -> 1.95, Sharpe 1.03 -> 1.14, hijau 53% -> 59%
+    #   paritas live-vs-backtest LULUS (research/smc_paritas.py): 15/15 harga limit
+    #     identik, 0 order hantu.
+    #
+    # ---- YANG WAJIB DIKETAHUI OPERATOR: SLOT INI DIPASANG MESKI TIDAK LOLOS AMBANG ----
+    # Dipasang 2026-08-13 atas keputusan user setelah keberatan di bawah disampaikan.
+    # * DSR 0.629, ambang 0.95, dengan 16 trial dilaporkan jujur. Kita TIDAK bisa
+    #   membedakan ini dari keberuntungan pada tingkat keyakinan 95%.
+    # * 2021-2023: 52 trade, net -$9.54. TIGA TAHUN MENGHASILKAN NOL. Kalau rezim emas
+    #   kembali datar, slot ini bisa diam bertahun-tahun. ITU BUKAN KERUSAKAN.
+    # * Buang 5 trade terbaik dari 96 -> net -$46. Hasil bertumpu pada segelintir trade,
+    #   jadi slot ini HARUS dibiarkan jalan; melewatkan trade besar menghapus segalanya.
+    # * SEMUA pembanding bodoh punya belah waktu yang sama (-489/+2102, -201/+1734), jadi
+    #   KAPAN untungnya ditentukan rezim emas. Yang ditambahkan SMC adalah kualitas per
+    #   satuan risiko, BUKAN kemampuan mencetak di rezim yang tidak mendukung.
+    # * ~17-20 order/tahun. Berminggu-minggu tanpa order itu normal.
+    # =================================================================================
+    - name: smc_xau
+      enabled: true
+      type: smclimit         # dipungut oleh pipeline/live/smc_limit_manager.py
+      symbol: XAUUSD
+      lot: 0.01              # tetap 0.01 sesuai aturan berdiri user: jangan naikkan
+                             #   tanpa alasan berbasis angka.
+      magic: 920643          # UNIK (920617=NQ ORB, 920622=Z, 920626=Golden,
+                             #        920627=eterna, 920641=eterna_asli, 920699=dummy)
+      params:
+        timeframe: "4h"      # H4-B. M15/H1/D1 semuanya diuji dan lebih buruk.
+        swing_k: 3           # fractal +-3; dataran k=2..5 semuanya untung
+        ob_lookback: 10      # jenuh di 8 — tidak sensitif
+        expiry_bars: 12      # = 48 jam. Dataran 6..24 semuanya untung; 24 maxDD -36.9%
+        rr: 2.0              # TP = 2x SL. rr=3 lebih cuan (+725) TAPI maxDD -33% vs -14.8%
+        buffer_frac: 0.10    # SL = di luar zona + 10% tinggi zona
+        use_fvg: true        # WAJIB: tanpa FVG (konfig A) H4 rugi -$168.92
+        history_bars: 60000  # ~1000 bar H4 dari M1
+        manager_poll_seconds: 30
+        dry_run: false       # LIVE sejak 2026-08-13. Jalur order_send diuji langsung ke
+                             #   broker sebelum dinyalakan (tiket uji 1964345492, dipasang
+                             #   $300 di bawah pasar supaya mustahil terisi, lalu dibatalkan):
+                             #   harga/SL/TP benar, expiry tersimpan server 06:24 = UTC 03:24
+                             #   persis sesuai permintaan, cancel bersih, nol sisa.
+                             #   Uji itu MENEMUKAN bug nyata: `expiration` sebagai objek
+                             #   datetime ditolak MT5 ("Invalid expiration argument") dan
+                             #   order_send mengembalikan None -> sleeve akan DIAM TOTAL
+                             #   tanpa satu order pun, dan itu terlihat sama persis dengan
+                             #   "belum ada sinyal". Harus int epoch. Lihat _place().
+
     # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
     # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
     # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
@@ -571,8 +638,31 @@ vision:
 advisor:
   enabled: true
   poll_seconds: 15              # how often to scan MT5 for a new position (read-only)
-  model: "claude-sonnet-4-6"    # 2026-07-03: Opus -> Sonnet (5x cheaper) after $4 balance concern
-  max_tokens: 700
+  model: "claude-opus-5"        # 2026-08-13: Sonnet -> Opus 5. Alasannya ANGKA, bukan selera:
+                                #   pemicu SMC berbasis ZONA, dan zona cuma ~20/tahun. Sekali
+                                #   panggil ~$0.06 -> ~$1.20/tahun. Perbedaan biaya Sonnet vs
+                                #   Opus di volume segitu tidak berarti; kualitas penilaian
+                                #   berarti. (Kekhawatiran biaya 2026-07-03 berlaku untuk
+                                #   pemicu per-POSISI yang jauh lebih sering.)
+  max_tokens: 1500              # dinaikkan dari 700: panggilan ber-web_search perlu ruang
+                                #   untuk merangkum temuan kalender + berita ke dalam JSON.
+  web_search: true              # 2026-08-13 INTI PERMINTAAN USER "data ke LLM lebih valid":
+                                #   pakai tool web_search sisi-server Anthropic supaya model
+                                #   MEMBACA SENDIRI kalender ekonomi + berita emas saat itu
+                                #   juga, bukan menebak dari konteks basi.
+                                #   Chrome extension SENGAJA TIDAK dipakai di sini: di VPS
+                                #   tanpa ditunggui dia butuh sesi Chrome hidup dan berhenti
+                                #   DIAM-DIAM kalau RDP putus / Chrome mati. Untuk sumber
+                                #   publik, web_search memberi validitas yang sama tanpa
+                                #   bagian bergerak di lokal. Pakai extension nanti kalau
+                                #   butuh sumber yang perlu login.
+  # Magic yang diberi verdict saat ZONA TER-ARM (pending LIMIT dipasang), bukan saat terisi.
+  # Ini permintaan user: "test itu per ada alert zona yang masuk dengan teori SMC".
+  # Dua keuntungan nyata dibanding pemicu per-posisi:
+  #   1. verdict tercatat SEBELUM fill -> bisa dinilai apakah ia memprediksi hasil
+  #   2. order yang KEDALUWARSA tanpa terisi ikut dapat label (16 dari 31 pending di
+  #      jendela uji paritas) -> dataset berlabel jadi DUA KALI LIPAT
+  watch_pending: [920643]       # smc_xau
   timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
   prompt_file: "pipeline/vision/prompt_advisor.md"
   journal_path: "advisor_journal.jsonl"
@@ -584,6 +674,7 @@ advisor:
     - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
     - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
     - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
+    - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau (dipicu ZONA, lihat watch_pending)
 
 # MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-
 # date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries

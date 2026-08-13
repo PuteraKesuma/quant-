@@ -73,11 +73,19 @@ def _parse(raw: str) -> dict:
 
 
 def annotate(images, symbol, direction, entry_price, *, client, system, model,
-             max_tokens) -> dict:
+             max_tokens, task_text: str | None = None, web_search: bool = False) -> dict:
     """Send chart image(s) + entry context to Claude; return a verdict dict.
 
+    `task_text` overrides the default "position already opened" framing — used by the
+    SMC zone trigger, which fires when a LIMIT is ARMED (before any fill).
+
+    `web_search` arms Anthropic's server-side search tool so the model reads the live
+    economic calendar and gold headlines itself instead of relying on stale context.
+    That is the whole point of the zone trigger: at ~20 alerts/year the call is cheap,
+    so it can afford to actually go and look.
+
     Never raises — on any failure returns a verdict=ERROR row so the journal still
-    records that an entry happened (with the failure reason)."""
+    records that the event happened (with the failure reason)."""
     try:
         content = []
         for label, png in images:
@@ -87,18 +95,40 @@ def annotate(images, symbol, direction, entry_price, *, client, system, model,
                 "data": base64.standard_b64encode(png).decode("utf-8")}})
         if not images:
             content.append({"type": "text", "text": "(chart capture unavailable this cycle)"})
-        content.append({"type": "text", "text": (
+        content.append({"type": "text", "text": task_text or (
             "The brain has ALREADY opened this position (final, not yours to change). "
             "Annotate it with macro/micro context.\n"
             f"- Instrument: {symbol}\n"
             f"- Direction taken by the brain: {direction}\n"
             f"- Entry price: {entry_price}\n"
             "Return STRICT JSON only, per the schema.")})
-        resp = client.messages.create(
-            model=model, max_tokens=max_tokens, system=system,
-            messages=[{"role": "user", "content": content}])
-        raw = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-        return _parse(raw)
+
+        kw = {}
+        if web_search:
+            # max_uses bounds the cost; the model still decides whether to search.
+            kw["tools"] = [{"type": "web_search_20260209", "name": "web_search",
+                            "max_uses": 4}]
+
+        messages = [{"role": "user", "content": content}]
+        resp = client.messages.create(model=model, max_tokens=max_tokens,
+                                      system=system, messages=messages, **kw)
+        # A server-tool turn can stop with pause_turn; resend once to let it finish.
+        for _ in range(2):
+            if getattr(resp, "stop_reason", None) != "pause_turn":
+                break
+            messages = messages + [{"role": "assistant", "content": resp.content}]
+            resp = client.messages.create(model=model, max_tokens=max_tokens,
+                                          system=system, messages=messages, **kw)
+
+        # Prefer the LAST text block: with web_search the reply also carries search
+        # narration, and a greedy {...} match over the whole thing can span past the JSON.
+        texts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
+        for t in reversed(texts):
+            try:
+                return _parse(t)
+            except Exception:
+                continue
+        return _parse("".join(texts))
     except Exception as e:                       # fail-safe: advisor must never crash
         logger.exception(f"[advisor:{symbol}] annotate failed")
         return {"verdict": "ERROR", "confidence": 0, "entry_quality": "",
@@ -122,7 +152,15 @@ class ShadowAdvisor:
         # magic -> {symbol, tv_symbol}
         self.watch = {int(w["magic"]): {"symbol": w["symbol"], "tv": w["tv_symbol"]}
                       for w in a.get("watch", [])}
+        # Magic yang diberi verdict saat ZONA TER-ARM (pending LIMIT dipasang), bukan
+        # saat terisi. Dipakai SMC: pemicunya alert zona, bukan posisi.
+        #   - verdict datang SEBELUM fill, jadi ada gunanya untuk dinilai belakangan
+        #   - order yang KEDALUWARSA tanpa terisi juga dapat label (16 dari 31 pending
+        #     di jendela uji) -> dataset berlabelnya dua kali lipat
+        self.watch_pending = {int(m) for m in a.get("watch_pending", [])}
+        self.web_search = bool(a.get("web_search", False))
         self.seen: set[int] = set()
+        self.seen_pending: set[int] = set()
         self.seeded = False
         self._client = None
         load_dotenv()                            # ANTHROPIC_API_KEY from .env
@@ -178,17 +216,80 @@ class ShadowAdvisor:
         logger.info(f"[advisor] ticket={pos.ticket} verdict={v['verdict']} "
                     f"conf={v['confidence']} :: {v['note']}")
 
+    def _handle_pending(self, o) -> None:
+        """Verdict saat ZONA TER-ARM: order LIMIT dipasang, belum terisi."""
+        w = self.watch[o.magic]
+        arah = "LONG" if o.type in (2, 4, 6) else "SHORT"    # *_LIMIT / *_STOP buy = genap
+        exp = (datetime.fromtimestamp(o.time_expiration, timezone.utc).isoformat()
+               if getattr(o, "time_expiration", 0) else None)
+        logger.info(f"[advisor] ZONA TER-ARM order={o.ticket} {w['symbol']} {arah} "
+                    f"limit={o.price_open} sl={o.sl} tp={o.tp} exp={exp} -> annotating")
+        try:
+            images = capture_multi_tv(w["tv"], self.timeframes)
+        except Exception as e:
+            logger.warning(f"[advisor] capture failed for {w['symbol']}: {e}")
+            images = []
+        tugas = (
+            "A resting LIMIT order has just been ARMED at a Smart-Money-Concepts Order "
+            "Block zone. It is NOT filled yet and may expire unfilled. You are NOT "
+            "deciding anything — the order is already placed and will not be changed. "
+            "Your job is to record the market context so it can be scored later.\n"
+            f"- Instrument: {w['symbol']}\n"
+            f"- Direction if filled: {arah}\n"
+            f"- Limit (Order Block edge): {o.price_open}\n"
+            f"- Stop loss: {o.sl}    Take profit: {o.tp}\n"
+            f"- Order EXPIRES at: {exp} (UTC). It fills only if price reaches the zone "
+            "before then.\n\n"
+            "Use web search to check, for the window between now and that expiry:\n"
+            "  1. scheduled high-impact USD / gold events (CPI, NFP, FOMC, PCE)\n"
+            "  2. current gold headlines and positioning sentiment\n"
+            "Put the concrete findings in `event_risk` (name the events and their dates/"
+            "times, or say explicitly that none are scheduled) and `macro`.\n"
+            "Return STRICT JSON only, per the schema.")
+        v = annotate(images, w["symbol"], arah, float(o.price_open),
+                     client=self._get_client(), system=self.system,
+                     model=self.model, max_tokens=self.max_tokens,
+                     task_text=tugas, web_search=self.web_search)
+        row = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "event": "zone_armed",               # bedakan dari baris entry biasa
+            "order_ticket": int(o.ticket),
+            "symbol": w["symbol"],
+            "magic": int(o.magic),
+            "direction": arah,
+            "limit_price": float(o.price_open),
+            "sl": float(o.sl), "tp": float(o.tp),
+            "expires_utc": exp,
+            "charts": [lbl for lbl, _ in images],
+            **v,
+        }
+        self._record(row, images)
+        logger.info(f"[advisor] order={o.ticket} verdict={v['verdict']} "
+                    f"conf={v['confidence']} :: {v['note']}")
+
     def poll_once(self, mt5) -> None:
         poss = mt5.positions_get()
         if poss is None:                         # MT5 not ready -> skip this poll
             return
+        pends = mt5.orders_get() if self.watch_pending else []
+        pends = [] if pends is None else [o for o in pends
+                                          if o.magic in self.watch_pending
+                                          and o.magic in self.watch]
         watched = [p for p in poss if p.magic in self.watch]
         if not self.seeded:                      # seed: skip everything already open
             self.seen = {int(p.ticket) for p in watched}
+            self.seen_pending = {int(o.ticket) for o in pends}
             self.seeded = True
-            logger.info(f"[advisor] seeded {len(self.seen)} open ticket(s); "
-                        f"will annotate entries opened from now on")
+            logger.info(f"[advisor] seeded {len(self.seen)} open ticket(s) and "
+                        f"{len(self.seen_pending)} pending; will annotate from now on")
             return
+        for o in pends:                          # zona ter-arm (SMC) — sebelum fill
+            if int(o.ticket) not in self.seen_pending:
+                self.seen_pending.add(int(o.ticket))
+                try:
+                    self._handle_pending(o)
+                except Exception:
+                    logger.exception("[advisor] pending handler failed (continuing)")
         for p in watched:
             if int(p.ticket) not in self.seen:
                 self.seen.add(int(p.ticket))

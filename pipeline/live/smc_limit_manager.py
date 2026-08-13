@@ -1,0 +1,355 @@
+"""SMC limit manager — pending BUY/SELL LIMIT di zona Order Block, DENGAN EXPIRY.
+
+Memasang order pending sungguhan lewat MT5 Python API (EA tidak disentuh), pola sama
+persis dengan liquidity_manager.py. Bedanya: order SMC punya masa berlaku terbatas
+(`ORDER_TIME_SPECIFIED`) dan TIDAK pernah di-reprice — zona Order Block ditetapkan
+sekali saat BOS terjadi, dan itulah inti konsepnya.
+
+  BOS bullish -> BUY_LIMIT  di ujung ATAS zona OB (harga harus retrace turun ke zona)
+  BOS bearish -> SELL_LIMIT di ujung BAWAH zona OB
+  SL di luar zona + buffer, TP = rr x jarak SL, kedaluwarsa setelah `expiry_bars` bar.
+
+DASAR RISET: research/smc_xau_backtest.py konfigurasi H4-B (OB + BOS + FVG).
+  n=96  net +$630.93  PF 1.81  maxDD -14.8%  5/6 tahun hijau  margin impas +13.5 poin
+  dataran parameter: 21/21 varian untung, acuan BUKAN puncak di sumbu mana pun
+  risk-adjusted mengalahkan beli-dan-tahan (42.5 vs 11.9 net per poin DD) dan setiap
+  pembanding bodoh tanpa OB/FVG (42.5 vs 14.5 / 9.9 / 24.3)
+
+  YANG HARUS DISADARI OPERATOR — ini dipasang meski TIDAK lolos ambang:
+  * DSR 0.629, ambang 0.95, dengan 16 trial dilaporkan jujur.
+  * 2021-2023: 52 trade, net -$9.54. TIGA TAHUN MENGHASILKAN NOL. Kalau rezim emas
+    kembali datar seperti itu, slot ini bisa diam bertahun-tahun. Itu BUKAN kerusakan.
+  * Buang 5 trade terbaik dari 96 -> net -$46. Hasilnya bertumpu pada segelintir trade,
+    jadi slot ini HARUS dibiarkan jalan; melewatkan trade besar menghapus segalanya.
+  * Semua pembanding bodoh punya belah waktu yang sama -> KAPAN untungnya ditentukan
+    rezim emas, bukan oleh SMC. Yang ditambahkan SMC adalah kualitas per satuan risiko.
+  * ~17 trade/tahun. Jangan cemas kalau berminggu-minggu tidak ada order.
+
+KESETIAAN KE BACKTEST: fungsi `_setup_terkini()` MENJALANKAN ULANG penelusuran bar yang
+sama persis seperti backtest (BOS sebagai PERISTIWA sekali-pakai per level, pivot baru
+dipakai setelah k bar konfirmasi), lalu mengambil keadaan di bar terakhir. Itu disengaja:
+menulis ulang logikanya dalam bentuk "cek kondisi sekarang" adalah cara paling umum
+live menyimpang dari backtest (pelajaran RSI2: 4 cacat paritas, -81%).
+Paritasnya diuji oleh research/smc_paritas.py.
+
+SAFETY: `dry_run` (default true) mencatat semua place/cancel TANPA mengirim.
+Run:  python -m pipeline.live.smc_limit_manager
+"""
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from loguru import logger
+
+from ..fetch.base_fetcher import load_config
+from .data import DataProvider
+
+ROOT = Path(__file__).resolve().parents[2]
+STATE = ROOT / "_MONITOR" / "smc_state.json"
+
+
+class SmcLimitManager:
+    def __init__(self, cfg: dict, spec: dict):
+        p = spec.get("params", {})
+        self.cfg = cfg
+        self.symbol = spec["symbol"]
+        self.mt5_symbol = cfg["symbols"][self.symbol]["mt5_symbol"]
+        self.magic = int(spec["magic"])
+        self.lot = float(spec["lot"])
+        self.timeframe = str(p.get("timeframe", "4h"))
+        self.k = int(p.get("swing_k", 3))
+        self.ob_lookback = int(p.get("ob_lookback", 10))
+        self.expiry_bars = int(p.get("expiry_bars", 12))
+        self.rr = float(p.get("rr", 2.0))
+        self.buffer_frac = float(p.get("buffer_frac", 0.10))
+        self.use_fvg = bool(p.get("use_fvg", True))
+        self.history_bars = int(p.get("history_bars", 60000))
+        self.poll = int(p.get("manager_poll_seconds", 30))
+        self.dry_run = bool(p.get("dry_run", True))
+        self.data = DataProvider(cfg)
+
+    # ---------------------------------------------------------------- state
+    @staticmethod
+    def _baca_state() -> dict:
+        try:
+            return json.loads(STATE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _tulis_state(self, d: dict) -> None:
+        try:
+            STATE.parent.mkdir(parents=True, exist_ok=True)
+            STATE.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        except Exception:
+            logger.exception("[smcmgr] gagal menulis state (lanjut)")
+
+    # ---------------------------------------------------------------- SMC
+    @staticmethod
+    def _pivots(hi: np.ndarray, lo: np.ndarray, k: int):
+        """Fractal +-k. Mengembalikan (idx_pivot, level, idx_konfirmasi=idx+k)."""
+        sh, sl = [], []
+        for i in range(k, len(hi) - k):
+            w_hi = hi[i - k:i + k + 1]
+            w_lo = lo[i - k:i + k + 1]
+            if hi[i] == w_hi.max() and w_hi.argmax() == k:
+                sh.append((i, float(hi[i]), i + k))
+            if lo[i] == w_lo.min() and w_lo.argmin() == k:
+                sl.append((i, float(lo[i]), i + k))
+        return sh, sl
+
+    def _cari_ob(self, o, c, hi, lo, j: int, arah: int):
+        awal = max(0, j - self.ob_lookback)
+        for i in range(j - 1, awal - 1, -1):
+            bearish = c[i] < o[i]
+            if (arah == 1 and bearish) or (arah == -1 and not bearish):
+                return i, float(lo[i]), float(hi[i])
+        return None
+
+    @staticmethod
+    def _ada_fvg(hi, lo, i0: int, i1: int, arah: int) -> bool:
+        for t in range(max(i0 + 1, 1), min(i1, len(hi) - 1)):
+            if arah == 1 and lo[t + 1] > hi[t - 1]:
+                return True
+            if arah == -1 and hi[t + 1] < lo[t - 1]:
+                return True
+        return False
+
+    def _setup_terkini(self, h: pd.DataFrame):
+        """Telusuri bar PERSIS seperti backtest; kembalikan pending yang aktif di bar akhir.
+
+        Mengembalikan dict {arah, price, sl, tp, bos_time, expiry_time} atau None.
+        Sengaja menjalankan ulang seluruh penelusuran, bukan memeriksa "kondisi
+        sekarang", supaya semantik BOS-sebagai-peristiwa identik dengan backtest.
+        """
+        o = h["open"].to_numpy(); c = h["close"].to_numpy()
+        hi = h["high"].to_numpy(); lo = h["low"].to_numpy()
+        idx = h.index
+        n = len(h)
+        if n < self.k * 2 + self.ob_lookback + 5:
+            return None
+
+        sh, sl_piv = self._pivots(hi, lo, self.k)
+        i_sh = i_sl = 0
+        last_sh = last_sl = None
+        sh_ditembus = sl_ditembus = False
+        pend = None          # (arah, px, sl, tp, exp_bar, bos_bar)
+        # Posisi virtual WAJIB disimulasikan lengkap dengan keluar SL/TP. Versi awal
+        # fungsi ini melewatkan itu dan uji paritas (research/smc_paritas.py) menangkap
+        # 2 "order hantu": manager meng-arm pending saat backtest masih memegang posisi.
+        # Live kebetulan aman karena poll_once memeriksa positions_get() lebih dulu, tapi
+        # dua jalur kode harus sepakat KARENA KONSTRUKSINYA, bukan karena pengaman lain.
+        pos = 0; p_sl = p_tp = 0.0
+
+        for j in range(1, n):
+            while i_sh < len(sh) and sh[i_sh][2] <= j:
+                last_sh = sh[i_sh][1]; i_sh += 1; sh_ditembus = False
+            while i_sl < len(sl_piv) and sl_piv[i_sl][2] <= j:
+                last_sl = sl_piv[i_sl][1]; i_sl += 1; sl_ditembus = False
+
+            # posisi terbuka: SL diprioritaskan (konservatif, sama seperti backtest)
+            if pos != 0:
+                if pos == 1:
+                    if lo[j] <= p_sl or hi[j] >= p_tp:
+                        pos = 0
+                else:
+                    if hi[j] >= p_sl or lo[j] <= p_tp:
+                        pos = 0
+
+            # pending kedaluwarsa / terisi
+            if pend is not None and pos == 0:
+                arah, px, s_, t_, exp_bar, _b = pend
+                kena = (lo[j] <= px) if arah == 1 else (hi[j] >= px)
+                if kena:
+                    pos, p_sl, p_tp = arah, s_, t_
+                    pend = None
+                elif j >= exp_bar:
+                    pend = None
+            elif pend is not None:
+                pend = None
+
+            arah = 0
+            if last_sh is not None and not sh_ditembus and c[j] > last_sh:
+                arah = 1; sh_ditembus = True
+            elif last_sl is not None and not sl_ditembus and c[j] < last_sl:
+                arah = -1; sl_ditembus = True
+            if arah == 0:
+                continue
+            if pos != 0 or pend is not None:
+                continue
+
+            ob = self._cari_ob(o, c, hi, lo, j, arah)
+            if ob is None:
+                continue
+            i_ob, ob_lo, ob_hi = ob
+            if ob_hi <= ob_lo:
+                continue
+            if self.use_fvg and not self._ada_fvg(hi, lo, i_ob, j, arah):
+                continue
+
+            buf = (ob_hi - ob_lo) * self.buffer_frac
+            if arah == 1:
+                px = ob_hi; s = ob_lo - buf
+                if px <= s or px >= c[j]:
+                    continue
+                t = px + self.rr * (px - s)
+            else:
+                px = ob_lo; s = ob_hi + buf
+                if px >= s or px <= c[j]:
+                    continue
+                t = px - self.rr * (s - px)
+            pend = (arah, px, s, t, j + self.expiry_bars, j)
+
+        if pend is None or pos != 0:
+            return None
+        arah, px, s, t, exp_bar, bos_bar = pend
+        delta = pd.Timedelta(self.timeframe)
+        return {"arah": arah, "price": float(px), "sl": float(s), "tp": float(t),
+                "bos_time": idx[bos_bar], "expiry_time": idx[bos_bar] + self.expiry_bars * delta}
+
+    def _bar_selesai(self):
+        df = self.data.recent_bars(self.symbol, self.history_bars)
+        if df.empty:
+            return None
+        h = (df.resample(self.timeframe)
+               .agg({"open": "first", "high": "max", "low": "min", "close": "last"})
+               .dropna(subset=["open"]))
+        now = pd.Timestamp.now("UTC")
+        cb = now.floor(self.timeframe)
+        # buang bar berjalan: sinyal HANYA dari bar yang sudah tertutup
+        return h.iloc[:-1] if (len(h) > 1 and h.index[-1] == cb) else h
+
+    # ---------------------------------------------------------------- MT5
+    def _send(self, mt5, req, what) -> bool:
+        if self.dry_run:
+            logger.info(f"[smcmgr] DRY-RUN {what}: {self._fmt(req)}")
+            return True
+        r = mt5.order_send(req)
+        ok = r is not None and r.retcode == mt5.TRADE_RETCODE_DONE
+        logger.info(f"[smcmgr] {what}: {self._fmt(req)} -> retcode={getattr(r, 'retcode', None)} "
+                    f"{'OK' if ok else 'FAIL ' + str(getattr(r, 'comment', ''))}")
+        return ok
+
+    @staticmethod
+    def _fmt(req):
+        keys = ("type", "price", "sl", "tp", "order", "expiration")
+        return " ".join(f"{k}={req[k]}" for k in keys if k in req)
+
+    def _place(self, mt5, otype, price, sl, tp, expiry_utc: pd.Timestamp) -> bool:
+        # MT5 `expiration` memakai WAKTU SERVER BROKER (FBS UTC+3), bukan UTC.
+        # Pakai detektor offset yang SAMA dengan DataProvider supaya tidak ada
+        # sumber kebenaran kedua yang bisa menyimpang saat DST berganti.
+        off = self.data._server_offset_hours(mt5, self.mt5_symbol)
+        # HARUS int epoch, BUKAN objek datetime. Diuji langsung ke FBS 2026-08-13:
+        #   datetime tz-aware -> order_send() None, last_error (-2, 'Invalid "expiration" argument')
+        #   datetime naive    -> None, error yang sama
+        #   int epoch         -> retcode 10009 diterima, broker menyimpan waktu yang benar
+        # Ini tidak terlihat di liquidity_manager karena dia memakai ORDER_TIME_GTC.
+        exp_epoch = int(expiry_utc.timestamp()) + off * 3600
+        req = {"action": mt5.TRADE_ACTION_PENDING, "symbol": self.mt5_symbol,
+               "volume": self.lot, "type": otype,
+               "price": round(price, 2), "sl": round(sl, 2), "tp": round(tp, 2),
+               "magic": self.magic, "type_time": mt5.ORDER_TIME_SPECIFIED,
+               "expiration": exp_epoch, "comment": "smc_ob"}
+        nama = "BUY_LIMIT" if otype == mt5.ORDER_TYPE_BUY_LIMIT else "SELL_LIMIT"
+        exp_srv = expiry_utc + pd.Timedelta(hours=off)
+        return self._send(mt5, req, f"PLACE {nama} exp={exp_srv:%Y-%m-%d %H:%M} srv "
+                                    f"({expiry_utc:%H:%M} UTC)")
+
+    def _cancel(self, mt5, ticket):
+        self._send(mt5, {"action": mt5.TRADE_ACTION_REMOVE, "order": ticket}, "CANCEL pending")
+
+    # ---------------------------------------------------------------- loop
+    def poll_once(self, mt5) -> None:
+        poss = mt5.positions_get(symbol=self.mt5_symbol)
+        pends = mt5.orders_get(symbol=self.mt5_symbol)
+        if poss is None or pends is None:
+            return                                   # MT5 belum siap -> lewati
+        my_pos = [p for p in poss if p.magic == self.magic]
+        my_pend = [o for o in pends if o.magic == self.magic]
+
+        if my_pos:                                   # satu posisi -> broker yang urus SL/TP
+            for o in my_pend:
+                self._cancel(mt5, o.ticket)
+            return
+
+        h = self._bar_selesai()
+        if h is None or h.empty:
+            return
+        setup = self._setup_terkini(h)
+
+        if setup is None:
+            for o in my_pend:                        # tidak ada setup aktif -> bersihkan
+                self._cancel(mt5, o.ticket)
+            return
+
+        st = self._baca_state()
+        bos_key = setup["bos_time"].isoformat()
+        otype = mt5.ORDER_TYPE_BUY_LIMIT if setup["arah"] == 1 else mt5.ORDER_TYPE_SELL_LIMIT
+
+        # pending yang sudah ada untuk BOS yang sama -> biarkan, broker pegang expiry-nya
+        if my_pend and st.get("bos") == bos_key:
+            return
+        for o in my_pend:                            # BOS baru -> buang order lama
+            self._cancel(mt5, o.ticket)
+        if st.get("bos") == bos_key and st.get("terkirim"):
+            return                                   # sudah pernah dikirim & sudah hilang
+
+        tick = mt5.symbol_info_tick(self.mt5_symbol)
+        info = mt5.symbol_info(self.mt5_symbol)
+        if tick and info:
+            min_dist = info.trade_stops_level * info.point
+            if otype == mt5.ORDER_TYPE_BUY_LIMIT and setup["price"] >= tick.ask - min_dist:
+                logger.info(f"[smcmgr] zona {setup['price']:.2f} terlalu dekat ask "
+                            f"{tick.ask:.2f} -> tunggu")
+                return
+            if otype == mt5.ORDER_TYPE_SELL_LIMIT and setup["price"] <= tick.bid + min_dist:
+                logger.info(f"[smcmgr] zona {setup['price']:.2f} terlalu dekat bid "
+                            f"{tick.bid:.2f} -> tunggu")
+                return
+
+        if pd.Timestamp.now("UTC") >= setup["expiry_time"]:
+            logger.info(f"[smcmgr] setup BOS {bos_key} sudah lewat masa berlaku -> lewati")
+            self._tulis_state({"bos": bos_key, "terkirim": True})
+            return
+
+        ok = self._place(mt5, otype, setup["price"], setup["sl"], setup["tp"],
+                         setup["expiry_time"])
+        if ok:
+            self._tulis_state({"bos": bos_key, "terkirim": True,
+                               "arah": setup["arah"], "price": setup["price"],
+                               "sl": setup["sl"], "tp": setup["tp"],
+                               "expiry_utc": setup["expiry_time"].isoformat()})
+
+    def run(self) -> None:
+        import MetaTrader5 as mt5
+        if not mt5.initialize():
+            logger.error(f"[smcmgr] MT5 init gagal: {mt5.last_error()}"); return
+        logger.info(f"[smcmgr] hidup. magic={self.magic} {self.symbol} tf={self.timeframe} "
+                    f"k={self.k} rr={self.rr} expiry={self.expiry_bars} bar "
+                    f"fvg={self.use_fvg} dry_run={self.dry_run} poll={self.poll}s")
+        try:
+            while True:
+                try:
+                    self.poll_once(mt5)
+                except Exception:
+                    logger.exception("[smcmgr] poll error (lanjut)")
+                time.sleep(self.poll)
+        finally:
+            mt5.shutdown()
+
+
+def main() -> None:
+    cfg = load_config()
+    specs = [s for s in cfg["live"]["strategies"]
+             if s.get("type") == "smclimit" and s.get("enabled", False)]
+    if not specs:
+        logger.info("[smcmgr] tidak ada slot smclimit aktif di config. Keluar."); return
+    SmcLimitManager(cfg, specs[0]).run()
+
+
+if __name__ == "__main__":
+    main()

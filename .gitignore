@@ -43,3 +43,4 @@ _MONITOR/watchdog_alive.txt
 # ini satu kali backup akan mencoba meng-commit satu giga biner ke GitHub.
 # Cara membuatnya ulang ada di _DOC/uji_ea_mt5.md - tidak perlu disimpan di riwayat.
 mt5_tester/
+research/_smc_hasil.pkl

@@ -108,6 +108,7 @@ $probeFails     = 0
 $lastRestart    = (Get-Date).AddHours(-1)
 $lastXauTry     = (Get-Date).AddHours(-1)
 $lastOrbTry     = (Get-Date).AddHours(-1)
+$lastSmcTry     = (Get-Date).AddHours(-1)
 $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
@@ -189,6 +190,19 @@ while ($true) {
             J "ERR" "orb_stop_manager MATI - sleeve ORB (43% bobot) tidak jalan. Menghidupkan ulang..."
             StartPy "pipeline.live.orb_stop_manager" "orbmgr_out.log" "orbmgr_err.log"
             $lastOrbTry = $now
+        }
+    }
+
+    # ---------- 4b. smc_limit_manager ----------
+    # Sleeve SMC (magic 920643): pending LIMIT di zona Order Block dengan expiry.
+    # Kalau mati, tidak ada yang memasang ATAU membatalkan order -> pending lama bisa
+    # menggantung sampai expiry-nya sendiri. Broker tetap menghormati SL/TP/expiry, jadi
+    # ini tidak berbahaya, tapi sleeve-nya berhenti menghasilkan sinyal baru.
+    if (-not (ProcUp "pipeline\.live\.smc_limit_manager")) {
+        if (($now - $lastSmcTry).TotalMinutes -ge $ProcCooldownMin) {
+            J "ERR" "smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang..."
+            StartPy "pipeline.live.smc_limit_manager" "smcmgr_out.log" "smcmgr_err.log"
+            $lastSmcTry = $now
         }
     }
 

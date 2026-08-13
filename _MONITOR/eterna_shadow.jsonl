@@ -1064,3 +1064,10 @@
 {"action":"BUY","ts":"2026-08-12 23:16:59","tp":4615.17,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-3","sl":4360.22}
 {"action":"FLAT","ts":"2026-08-12 23:16:59","tp":0.0,"strategy":"eterna_asli","signal_id":"XAUUSD-eterna_asli-13767","sl":0.0}
 {"action":"FLAT","ts":"2026-08-12 23:33:19","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-0","sl":0.0}
+{"action":"FLAT","ts":"2026-08-12 23:48:40","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 00:04:01","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 00:19:14","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 00:34:29","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 00:49:50","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 01:05:09","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
+{"action":"FLAT","ts":"2026-08-13 01:18:43","tp":0.0,"strategy":"eterna_xau","signal_id":"XAUUSD-eterna_xau-1","sl":0.0}
