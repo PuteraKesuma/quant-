@@ -69,6 +69,17 @@ class SmcLimitManager:
         self.use_fvg = bool(p.get("use_fvg", True))
         self.use_sweep = bool(p.get("use_sweep", False))
         self.sweep_window = int(p.get("sweep_window", 5))
+        # Mode eksekusi:
+        #   "limit"      -> pending LIMIT menganggur di ujung zona, broker mengisi otomatis
+        #   "m5_confirm" -> TIDAK ada pending. Tunggu harga menyentuh zona, lalu wajib ada
+        #                   BOS M5 searah dalam `konfirm_bars_m5` bar, baru kirim MARKET.
+        # Diukur di research/smc_konfirmasi_m5.py: konfirmasi M5 MENOLONG H1-C
+        # (net/DD 153->291, WR 50%->68%, maxDD -7.8%->-4.4%) tapi MERUSAK H4-B
+        # (net/DD 98->51). Karena itu mode-nya per-slot, bukan global.
+        self.entry_mode = str(p.get("entry_mode", "limit"))
+        self.konfirm_bars_m5 = int(p.get("konfirm_bars_m5", 12))
+        # Konfirmasi yang sudah lewat lama TIDAK boleh dieksekusi: harganya sudah basi.
+        self.konfirm_max_umur = int(p.get("konfirm_max_umur_bar", 2))
         self.history_bars = int(p.get("history_bars", 60000))
         self.poll = int(p.get("manager_poll_seconds", 30))
         self.dry_run = bool(p.get("dry_run", True))
@@ -254,6 +265,82 @@ class SmcLimitManager:
         return {"arah": arah, "price": float(px), "sl": float(s), "tp": float(t),
                 "bos_time": idx[bos_bar], "expiry_time": idx[bos_bar] + self.expiry_bars * delta}
 
+    def _konfirmasi_m5(self, setup: dict):
+        """Mode m5_confirm: apakah SEKARANG saatnya masuk pasar?
+
+        Dihitung ulang dari bar M5 tiap poll (bukan disimpan sebagai keadaan), supaya
+        restart di tengah jalan tidak mengubah hasil — filosofi yang sama dengan
+        _setup_terkini().
+
+        Kembalikan (masuk: bool, alasan: str).
+        """
+        df = self.data.recent_bars(self.symbol, 20000)
+        if df.empty:
+            return False, "tidak ada data M1"
+        m5 = (df.resample("5min").agg({"open": "first", "high": "max",
+                                       "low": "min", "close": "last"})
+                .dropna(subset=["open"]))
+        now = pd.Timestamp.now("UTC")
+        if len(m5) > 1 and m5.index[-1] == now.floor("5min"):
+            m5 = m5.iloc[:-1]                      # buang bar berjalan
+        seg = m5.loc[setup["bos_time"]:setup["expiry_time"]]
+        if len(seg) < self.k * 2 + 2:
+            return False, "bar M5 belum cukup"
+
+        arah = setup["arah"]; px = setup["price"]
+        hi = seg["high"].to_numpy(); lo = seg["low"].to_numpy()
+        c = seg["close"].to_numpy(); n = len(seg)
+
+        # 1) harga harus SUDAH menyentuh zona
+        sentuh = None
+        for j in range(1, n):
+            if (lo[j] <= px) if arah == 1 else (hi[j] >= px):
+                sentuh = j; break
+        if sentuh is None:
+            return False, "zona belum tersentuh"
+
+        # 2) BOS M5 searah dalam jendela konfirmasi setelah sentuhan
+        sh, sl_p = self._pivots(hi, lo, self.k)
+        lvl = self._level_terkonfirmasi(sh if arah == 1 else sl_p, n)
+        batas = min(sentuh + self.konfirm_bars_m5, n)
+        konfirm = None
+        for j in range(sentuh, batas):
+            ref = lvl[j]
+            if ref != ref:
+                continue
+            if (arah == 1 and c[j] > ref) or (arah == -1 and c[j] < ref):
+                konfirm = j; break
+        if konfirm is None:
+            habis = (batas >= n and n - sentuh >= self.konfirm_bars_m5)
+            return False, ("jendela konfirmasi HABIS tanpa BOS M5" if habis
+                           else f"menunggu BOS M5 ({n - sentuh}/{self.konfirm_bars_m5} bar)")
+
+        # 3) konfirmasi harus BARU — kalau sudah lewat lama, harganya basi
+        umur = (n - 1) - konfirm
+        if umur > self.konfirm_max_umur:
+            return False, f"konfirmasi sudah lewat {umur} bar M5 -> harga basi, lewati"
+        # 4) jangan masuk kalau harga sudah melewati SL/TP
+        px_now = c[-1]
+        if (arah == 1 and (px_now >= setup["tp"] or px_now <= setup["sl"])) or \
+           (arah == -1 and (px_now <= setup["tp"] or px_now >= setup["sl"])):
+            return False, "harga sudah di luar SL/TP"
+        return True, f"BOS M5 terkonfirmasi ({umur} bar lalu)"
+
+    def _kirim_market(self, mt5, arah: int, sl: float, tp: float) -> bool:
+        info = mt5.symbol_info(self.mt5_symbol)
+        filling = (mt5.ORDER_FILLING_IOC if info and (info.filling_mode & 2)
+                   else mt5.ORDER_FILLING_FOK)
+        tick = mt5.symbol_info_tick(self.mt5_symbol)
+        harga = tick.ask if arah == 1 else tick.bid
+        req = {"action": mt5.TRADE_ACTION_DEAL, "symbol": self.mt5_symbol,
+               "volume": self.lot,
+               "type": mt5.ORDER_TYPE_BUY if arah == 1 else mt5.ORDER_TYPE_SELL,
+               "price": harga, "sl": round(sl, 2), "tp": round(tp, 2),
+               "deviation": 20, "magic": self.magic,
+               "type_time": mt5.ORDER_TIME_GTC, "type_filling": filling,
+               "comment": "smc_m5"}
+        return self._send(mt5, req, f"MARKET {'BUY' if arah == 1 else 'SELL'} (konfirmasi M5)")
+
     def _bar_selesai(self):
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
@@ -332,6 +419,51 @@ class SmcLimitManager:
 
         st = self._baca_state()
         bos_key = setup["bos_time"].isoformat()
+
+        # ---- mode m5_confirm: tidak ada pending; pantau lalu kirim MARKET ----------
+        if self.entry_mode == "m5_confirm":
+            for o in my_pend:                    # mode ini tidak memakai pending
+                self._cancel(mt5, o.ticket)
+            if st.get("bos") == bos_key and st.get("terkirim"):
+                return
+            if pd.Timestamp.now("UTC") >= setup["expiry_time"]:
+                self._tulis_state({**st, "bos": bos_key, "terkirim": True,
+                                   "dilewati_karena": "zona kedaluwarsa tanpa konfirmasi"})
+                return
+            hari = pd.Timestamp.now("UTC").strftime("%Y-%m-%d")
+            jumlah = int(st.get("jumlah", 0)) if st.get("hari") == hari else 0
+            if jumlah >= self.max_per_day:
+                return
+            siap, alasan = self._konfirmasi_m5(setup)
+            if not siap:
+                if st.get("alasan_terakhir") != alasan:      # jangan spam log
+                    logger.info(f"[smcmgr] {self.magic} zona {bos_key}: {alasan}")
+                    self._tulis_state({**st, "bos": bos_key, "alasan_terakhir": alasan,
+                                       "hari": hari, "jumlah": jumlah})
+                return
+            logger.info(f"[smcmgr] {self.magic} zona {bos_key}: {alasan} -> MASUK PASAR")
+            mesin = {"sl": round(setup["sl"], 2), "tp": round(setup["tp"], 2),
+                     "expiry_bars": self.expiry_bars}
+            tick = mt5.symbol_info_tick(self.mt5_symbol)
+            rr = self.rr_agent.nilai(arah=setup["arah"], price=round(setup["price"], 2),
+                                     mesin=mesin, symbol=self.symbol,
+                                     expiry_utc=setup["expiry_time"],
+                                     tick_bid=float(tick.bid) if tick else 0.0)
+            if rr.get("skip"):
+                self._tulis_state({**st, "bos": bos_key, "terkirim": True, "hari": hari,
+                                   "jumlah": jumlah, "dilewati_karena": "agent SKIP"})
+                return
+            ok = self._kirim_market(mt5, setup["arah"], float(rr["sl"]), float(rr["tp"]))
+            if ok:
+                self._tulis_state({"bos": bos_key, "terkirim": True, "mode": "m5_confirm",
+                                   "arah": setup["arah"], "zona": setup["price"],
+                                   "sl": rr["sl"], "tp": rr["tp"],
+                                   "sumber_rr": rr.get("sumber"),
+                                   "hari": hari, "jumlah": jumlah + 1})
+                logger.info(f"[smcmgr] {self.magic} setup ke-{jumlah + 1}/{self.max_per_day} "
+                            f"hari ini, RR dari {rr.get('sumber')}")
+            return
+
         otype = mt5.ORDER_TYPE_BUY_LIMIT if setup["arah"] == 1 else mt5.ORDER_TYPE_SELL_LIMIT
 
         # pending yang sudah ada untuk BOS yang sama -> biarkan, broker pegang expiry-nya

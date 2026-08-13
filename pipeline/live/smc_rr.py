@@ -57,7 +57,8 @@ class RrAgent:
         self.max_tokens = int(a.get("max_tokens", 1200))
         self.timeout = float(a.get("timeout_seconds", 90))
         self.web_search = bool(a.get("web_search", True))
-        self.timeframes = list(a.get("timeframes", ["H4", "H1"]))
+        self.timeframes = list(a.get("timeframes", ["H4", "H1", "M5"]))
+        self.max_search_uses = int(a.get("max_search_uses", 2))
         self.tv_symbol = a.get("tv_symbol", "OANDA:XAUUSD")
         self.allow_skip = bool(a.get("allow_skip", False))
         # batas keras
@@ -220,7 +221,7 @@ class RrAgent:
         kw = {}
         if self.web_search:
             kw["tools"] = [{"type": "web_search_20260209", "name": "web_search",
-                            "max_uses": 4}]
+                            "max_uses": self.max_search_uses}]
         pakai_token = {"in": 0, "out": 0, "cari": 0}
         try:
             msgs = [{"role": "user", "content": content}]

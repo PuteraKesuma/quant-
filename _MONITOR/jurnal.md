@@ -1645,3 +1645,14 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-13 06:21:25 UTC** HB  [wd] Sehat. slots=eterna_xau. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-13 06:28:02 UTC** ERR [wd] smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang...
 - **2026-08-13 06:30:01 UTC** BK  [backup] Mulai cadangan otomatis.
+- **2026-08-13 06:30:02 UTC** CMT [backup] 2 perubahan otomatis di-commit (jangan biarkan kerja menganggur).
+- **2026-08-13 06:30:06 UTC** BK  [backup] Bundle dibuat: quant-backup-20260812-2330.bundle (4.6 MB, HEAD 6198533).
+- **2026-08-13 06:38:19 UTC** BK  [backup] ZIP dibuat: QUANT-BACKUP-20260812-2330.zip (309.7 MB). TARIK KE PC LOKAL.
+- **2026-08-13 06:38:30 UTC** OK  [backup] Push GitHub BERHASIL - riwayat aman di luar VPS.
+- **2026-08-13 06:38:30 UTC** CLN [backup] Cadangan lama dibuang: quant-backup-20260810-0349.bundle
+- **2026-08-13 06:38:30 UTC** CLN [backup] Cadangan lama dibuang: QUANT-BACKUP-20260810-0349.zip
+- **2026-08-13 06:38:30 UTC** BK  [backup] Selesai. HEAD 6198533.
+- **2026-08-13 06:51:27 UTC** HB  [wd] Sehat. slots=eterna_xau. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 07:05:56 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-13 07:21:44 UTC** HB  [wd] Sehat. slots=eterna_xau. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 07:38:30 UTC** ERR [wd] smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang...

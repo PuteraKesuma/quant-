@@ -673,6 +673,22 @@ live:
         use_fvg: false       # konfigurasi C: TANPA FVG
         use_sweep: true      # WAJIB: sweep-lah yang membedakan C. Tanpa itu H1-A = -$5.
         sweep_window: 5
+        # --- KONFIRMASI ENTRY DI M5 (permintaan user 2026-08-13) -------------------
+        # TIDAK ada pending limit di aliran ini. Alurnya: harga menyentuh zona OB ->
+        # wajib ada BOS M5 searah dalam 12 bar M5 (60 menit) -> baru kirim MARKET.
+        #
+        # Diukur di research/smc_konfirmasi_m5.py (443 zona, exit diputus di bar M5):
+        #   limit pasif        303 trade  +$1194  PF 1.92  WR 50%  maxDD -7.8%  net/DD 153
+        #   konfirmasi 12 bar  215 trade  +$1280  PF 2.65  WR 68%  maxDD -4.4%  net/DD 291
+        # Membaik di SETIAP dimensi: uang naik, PF naik, win rate 50%->68%,
+        # drawdown hampir setengah.
+        #
+        # SENGAJA TIDAK dipasang di H4-B: di sana konfirmasi justru MERUSAK
+        # (net/DD 98 -> 51, trade 99 -> 57). Zona H4 besar dan lambat; menunggu
+        # konfirmasi berarti ketinggalan geraknya. Karena itu mode ini per-slot.
+        entry_mode: "m5_confirm"
+        konfirm_bars_m5: 12       # 12 bar M5 = 60 menit setelah zona tersentuh
+        konfirm_max_umur_bar: 2   # konfirmasi >2 bar M5 yang lalu = harga basi, lewati
         history_bars: 30000  # ~500 bar H1
         max_setups_per_day: 2
         manager_poll_seconds: 30
@@ -710,10 +726,20 @@ live:
 smc_rr:
   enabled: true
   model: "claude-sonnet-5"   # 2026-08-13 permintaan user: Sonnet biar murah
-  max_tokens: 1200
-  timeout_seconds: 90         # panggilan sinkron di loop manager -> WAJIB ada timeout
+  max_tokens: 16000           # lihat catatan max_tokens di blok advisor: web_search
+                              #   menghabiskan jatah output lewat thinking + code execution.
+                              #   Di 1200 model tidak pernah sampai menulis JSON.
+  timeout_seconds: 900        # 2026-08-13 dinaikkan lagi: panggilan NYATA terukur 500
+                              #   detik (bukan 170). Di timeout 300 dia akan selalu jatuh
+                              #   ke fallback -> agent tidak pernah benar-benar dipakai.
+  max_search_uses: 2          # diturunkan dari 4: tiap pencarian menambah waktu DAN token
+                              #   (input terukur 71.916 token/panggilan = $0.32). Dua
+                              #   pencarian cukup untuk kalender + sentimen.         # panggilan sinkron di loop manager -> WAJIB ada timeout
   web_search: true            # baca kalender ekonomi + berita emas langsung
-  timeframes: ["H4", "H1"]
+  timeframes: ["H4", "H1", "M5"]   # 2026-08-13 permintaan user: SL/TP harus dicek di
+                              #   BERBAGAI timeframe, dan konfirmasi entry di M5.
+                              #   H4 = bias & struktur besar, H1 = zona, M5 = konfirmasi
+                              #   entry + likuiditas terdekat yang menentukan SL wajar.
   tv_symbol: "OANDA:XAUUSD"
   allow_skip: false           # false = agent boleh menyesuaikan angka tapi TIDAK boleh
                               #   membatalkan zona. Set true kalau nanti terbukti
@@ -745,8 +771,15 @@ advisor:
                                 #   (H4 38 + H1 81 — yang dihitung ZONA TER-ARM, bukan yang
                                 #   terisi). Dengan Sonnet 5 total ~$25-30/tahun.
                                 #   Sonnet 5 mendukung web_search_20260209.
-  max_tokens: 1500              # dinaikkan dari 700: panggilan ber-web_search perlu ruang
-                                #   untuk merangkum temuan kalender + berita ke dalam JSON.
+  max_tokens: 16000             # 2026-08-13 dinaikkan dari 1500 setelah uji end-to-end GAGAL.
+                                #   web_search_20260209 punya dynamic filtering -> menjalankan
+                                #   code execution di belakang layar. Balasannya penuh blok
+                                #   thinking + server_tool_use + code_execution_tool_result,
+                                #   dan SEMUA itu memakan jatah output. Di max_tokens 1200 dan
+                                #   4000 hasilnya NOL blok teks: model kehabisan jatah sebelum
+                                #   sempat menulis JSON, dan fallback ke angka mesin.
+                                #   Biaya TIDAK naik karena plafon dinaikkan - yang dibayar
+                                #   token yang benar-benar dipakai.
   web_search: true              # 2026-08-13 INTI PERMINTAAN USER "data ke LLM lebih valid":
                                 #   pakai tool web_search sisi-server Anthropic supaya model
                                 #   MEMBACA SENDIRI kalender ekonomi + berita emas saat itu
