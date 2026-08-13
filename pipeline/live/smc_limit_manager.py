@@ -341,6 +341,35 @@ class SmcLimitManager:
                "comment": "smc_m5"}
         return self._send(mt5, req, f"MARKET {'BUY' if arah == 1 else 'SELL'} (konfirmasi M5)")
 
+    def _trade_hari_ini(self, mt5) -> int:
+        """Jumlah TRADE hari ini untuk magic ini, dibaca dari riwayat deal MT5.
+
+        Sengaja TIDAK bergantung pada file state. State bisa basi: pada 2026-08-13
+        sebuah limit order dipasang lalu DIBATALKAN saat mode diganti ke m5_confirm,
+        tapi penghitungnya sudah terlanjur naik -> SMC kehilangan 1 dari 2 jatah
+        harian tanpa pernah trade. Riwayat deal adalah kebenaran yang tidak bisa
+        basi, dan sesuai permintaan user: yang dibatasi adalah TRADE, bukan order.
+
+        Kalau MT5 tidak menjawab, kembalikan -1 supaya pemanggil memakai state
+        sebagai cadangan (fail-safe: lebih baik memakai angka lama daripada
+        menganggap nol lalu melewati batas).
+        """
+        try:
+            now = pd.Timestamp.now("UTC")
+            awal = now.normalize()
+            off = self.data._server_offset_hours(mt5, self.mt5_symbol)
+            a = (awal + pd.Timedelta(hours=off)).to_pydatetime()
+            b = (now + pd.Timedelta(hours=off + 1)).to_pydatetime()
+            deals = mt5.history_deals_get(a, b)
+            if deals is None:
+                return -1
+            # entry=0 (DEAL_ENTRY_IN) = pembukaan posisi; itulah satu "trade"
+            return sum(1 for d in deals
+                       if d.magic == self.magic and d.entry == 0)
+        except Exception:
+            logger.exception("[smcmgr] gagal membaca riwayat deal (pakai state)")
+            return -1
+
     def _bar_selesai(self):
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
@@ -431,8 +460,17 @@ class SmcLimitManager:
                                    "dilewati_karena": "zona kedaluwarsa tanpa konfirmasi"})
                 return
             hari = pd.Timestamp.now("UTC").strftime("%Y-%m-%d")
-            jumlah = int(st.get("jumlah", 0)) if st.get("hari") == hari else 0
+            # Sumber kebenaran = riwayat deal MT5 (TRADE nyata), bukan file state.
+            # State dipakai hanya kalau MT5 tidak menjawab.
+            nyata = self._trade_hari_ini(mt5)
+            jumlah = nyata if nyata >= 0 else (
+                int(st.get("jumlah", 0)) if st.get("hari") == hari else 0)
             if jumlah >= self.max_per_day:
+                if st.get("alasan_terakhir") != "batas harian":
+                    logger.info(f"[smcmgr] {self.magic} batas {self.max_per_day} "
+                                f"trade/hari tercapai ({jumlah}) -> zona dilewati")
+                    self._tulis_state({**st, "alasan_terakhir": "batas harian",
+                                       "hari": hari, "jumlah": jumlah})
                 return
             siap, alasan = self._konfirmasi_m5(setup)
             if not siap:

@@ -9,6 +9,7 @@
     "sumber_rr": "mesin",
     "expiry_utc": "2026-08-13T17:00:00+00:00",
     "hari": "2026-08-13",
-    "jumlah": 1
+    "jumlah": 0,
+    "catatan": "hitungan direset 2026-08-13: order limit dipasang lalu DIBATALKAN saat pindah ke m5_confirm, tidak pernah jadi trade"
   }
 }
