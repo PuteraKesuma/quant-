@@ -605,6 +605,13 @@ live:
         buffer_frac: 0.10    # SL = di luar zona + 10% tinggi zona
         use_fvg: true        # WAJIB: tanpa FVG (konfig A) H4 rugi -$168.92
         history_bars: 60000  # ~1000 bar H4 dari M1
+        max_setups_per_day: 2  # 2026-08-13 permintaan user: "1 hari maksimal 2 trade".
+                             #   Dihitung per hari UTC, menghitung ORDER YANG DIPASANG
+                             #   (bukan yang terisi) — sesuai "maksimal 2 kali set".
+                             #   CATATAN JUJUR: pada H4 sleeve ini rata-rata ~17-20 order
+                             #   per TAHUN (~0.05/hari), jadi batas ini praktis TIDAK
+                             #   PERNAH aktif. Dia berguna sebagai pengaman kalau nanti
+                             #   timeframe diturunkan atau aturan dilonggarkan.
         manager_poll_seconds: 30
         dry_run: false       # LIVE sejak 2026-08-13. Jalur order_send diuji langsung ke
                              #   broker sebelum dinyalakan (tiket uji 1964345492, dipasang
@@ -625,6 +632,45 @@ live:
     # entry and logs a CONFIRM/CAUTION verdict ALONGSIDE the outcome, blocking nothing. After
     # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
     # let it filter. Honest forward-test, zero risk to the validated edge.
+
+# =====================================================================================
+# AGENT RR untuk sleeve SMC (pipeline/live/smc_rr.py) — 2026-08-13, permintaan user:
+# "pakai agent juga untuk melihat RR nya untuk sl tp dan time exitnya".
+#
+# Dipanggil SINKRON oleh smc_limit_manager tepat sebelum order dikirim. Agent melihat
+# chart + zona Order Block, mengecek kalender ekonomi lewat web_search, lalu boleh
+# MENYESUAIKAN sl / tp / expiry_bars.
+#
+# RANCANGAN: agent adalah PENYESUAI, bukan penentu tunggal. Mesin selalu menghitung
+# angka deterministik lebih dulu; agent menggesernya DI DALAM batas keras di bawah.
+#   * kredit API habis / jaringan putus / balasan sampah -> pakai angka mesin,
+#     trading JALAN TERUS. Kalau agent wajib, satu kegagalan API = sleeve mati.
+#   * keluaran model tidak deterministik; batas keras membuat kerusakan terparah
+#     yang bisa ia sebabkan tetap terbatas dan bisa diaudit.
+#
+# KONSEKUENSI YANG HARUS DISADARI: begitu agent menggeser SL/TP/exit, angka backtest
+# H4-B (PF 1.81, maxDD -14.8%) BERHENTI menggambarkan yang berjalan. Yang jalan jadi
+# sistem baru tanpa rekam jejak. Itu sebabnya tiap keputusan dicatat lengkap (angka
+# mesin DAN angka agent) supaya belakangan bisa diukur mana yang lebih baik.
+# =====================================================================================
+smc_rr:
+  enabled: true
+  model: "claude-opus-5"
+  max_tokens: 1200
+  timeout_seconds: 90         # panggilan sinkron di loop manager -> WAJIB ada timeout
+  web_search: true            # baca kalender ekonomi + berita emas langsung
+  timeframes: ["H4", "H1"]
+  tv_symbol: "OANDA:XAUUSD"
+  allow_skip: false           # false = agent boleh menyesuaikan angka tapi TIDAK boleh
+                              #   membatalkan zona. Set true kalau nanti terbukti
+                              #   verdict SKIP-nya memang memprediksi trade rugi.
+  # ---- batas keras: agent TIDAK bisa melewatinya; dilanggar = angka mesin dipakai ----
+  sl_max_mult: 1.5            # SL maksimum 1.5x jarak SL mesin (membatasi risiko)
+  min_sl_usd: 3.0             # SL minimum $3 (cegah stop tercekik lalu kena noise)
+  rr_min: 1.2                 # RR akhir minimum (cegah TP dipepet jadi tidak layak)
+  expiry_min_bars: 3
+  expiry_max_bars: 24
+  journal_path: "smc_rr_journal.jsonl"
 
 # AI-vision audit trail (used by pipeline/vision/journal.py)
 vision:

@@ -70,7 +70,12 @@ class SmcLimitManager:
         self.history_bars = int(p.get("history_bars", 60000))
         self.poll = int(p.get("manager_poll_seconds", 30))
         self.dry_run = bool(p.get("dry_run", True))
+        # Batas setup per hari (permintaan user 2026-08-13). Dihitung per hari UTC dan
+        # menghitung ORDER YANG DIPASANG, bukan yang terisi - "maksimal 2 kali set".
+        self.max_per_day = int(p.get("max_setups_per_day", 2))
         self.data = DataProvider(cfg)
+        from .smc_rr import RrAgent
+        self.rr_agent = RrAgent(cfg)
 
     # ---------------------------------------------------------------- state
     @staticmethod
@@ -313,16 +318,49 @@ class SmcLimitManager:
 
         if pd.Timestamp.now("UTC") >= setup["expiry_time"]:
             logger.info(f"[smcmgr] setup BOS {bos_key} sudah lewat masa berlaku -> lewati")
-            self._tulis_state({"bos": bos_key, "terkirim": True})
+            self._tulis_state({**st, "bos": bos_key, "terkirim": True})
             return
 
-        ok = self._place(mt5, otype, setup["price"], setup["sl"], setup["tp"],
-                         setup["expiry_time"])
+        # --- batas setup per hari ---------------------------------------------
+        hari = pd.Timestamp.now("UTC").strftime("%Y-%m-%d")
+        jumlah = int(st.get("jumlah", 0)) if st.get("hari") == hari else 0
+        if jumlah >= self.max_per_day:
+            logger.info(f"[smcmgr] batas {self.max_per_day} setup/hari sudah tercapai "
+                        f"({jumlah} hari ini) -> zona {bos_key} DILEWATI")
+            self._tulis_state({**st, "bos": bos_key, "terkirim": True,
+                               "hari": hari, "jumlah": jumlah,
+                               "dilewati_karena": "batas harian"})
+            return
+
+        # --- agent RR: boleh menyesuaikan SL/TP/time-exit di dalam batas keras --
+        tick = mt5.symbol_info_tick(self.mt5_symbol)
+        mesin = {"sl": round(setup["sl"], 2), "tp": round(setup["tp"], 2),
+                 "expiry_bars": self.expiry_bars}
+        rr = self.rr_agent.nilai(arah=setup["arah"], price=round(setup["price"], 2),
+                                 mesin=mesin, symbol=self.symbol,
+                                 expiry_utc=setup["expiry_time"],
+                                 tick_bid=float(tick.bid) if tick else 0.0)
+        if rr.get("skip"):
+            logger.info(f"[smcmgr] agent menyarankan LEWATI zona {bos_key} :: {rr['reason'][:160]}")
+            self._tulis_state({**st, "bos": bos_key, "terkirim": True, "hari": hari,
+                               "jumlah": jumlah, "dilewati_karena": "agent SKIP"})
+            return
+        sl_pakai, tp_pakai = float(rr["sl"]), float(rr["tp"])
+        # time-exit bisa digeser agent -> hitung ulang saat kedaluwarsa dari bar BOS
+        exp_pakai = setup["bos_time"] + int(rr["expiry_bars"]) * pd.Timedelta(self.timeframe)
+        if exp_pakai <= pd.Timestamp.now("UTC"):
+            exp_pakai = setup["expiry_time"]      # agent memendekkan sampai lewat -> pakai asli
+
+        ok = self._place(mt5, otype, setup["price"], sl_pakai, tp_pakai, exp_pakai)
         if ok:
             self._tulis_state({"bos": bos_key, "terkirim": True,
                                "arah": setup["arah"], "price": setup["price"],
-                               "sl": setup["sl"], "tp": setup["tp"],
-                               "expiry_utc": setup["expiry_time"].isoformat()})
+                               "sl": sl_pakai, "tp": tp_pakai,
+                               "sumber_rr": rr.get("sumber"),
+                               "expiry_utc": exp_pakai.isoformat(),
+                               "hari": hari, "jumlah": jumlah + 1})
+            logger.info(f"[smcmgr] setup ke-{jumlah + 1}/{self.max_per_day} hari ini "
+                        f"({hari}), RR dari {rr.get('sumber')}")
 
     def run(self) -> None:
         import MetaTrader5 as mt5
