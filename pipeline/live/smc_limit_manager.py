@@ -67,6 +67,8 @@ class SmcLimitManager:
         self.rr = float(p.get("rr", 2.0))
         self.buffer_frac = float(p.get("buffer_frac", 0.10))
         self.use_fvg = bool(p.get("use_fvg", True))
+        self.use_sweep = bool(p.get("use_sweep", False))
+        self.sweep_window = int(p.get("sweep_window", 5))
         self.history_bars = int(p.get("history_bars", 60000))
         self.poll = int(p.get("manager_poll_seconds", 30))
         self.dry_run = bool(p.get("dry_run", True))
@@ -78,17 +80,25 @@ class SmcLimitManager:
         self.rr_agent = RrAgent(cfg)
 
     # ---------------------------------------------------------------- state
+    # State dikunci per MAGIC supaya beberapa aliran SMC (H4-B dan H1-C) bisa hidup
+    # berdampingan tanpa saling menimpa hitungan setup harian atau penanda BOS.
     @staticmethod
-    def _baca_state() -> dict:
+    def _baca_semua() -> dict:
         try:
-            return json.loads(STATE.read_text(encoding="utf-8"))
+            d = json.loads(STATE.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
         except Exception:
             return {}
+
+    def _baca_state(self) -> dict:
+        return self._baca_semua().get(str(self.magic), {})
 
     def _tulis_state(self, d: dict) -> None:
         try:
             STATE.parent.mkdir(parents=True, exist_ok=True)
-            STATE.write_text(json.dumps(d, indent=2), encoding="utf-8")
+            semua = self._baca_semua()
+            semua[str(self.magic)] = d
+            STATE.write_text(json.dumps(semua, indent=2), encoding="utf-8")
         except Exception:
             logger.exception("[smcmgr] gagal menulis state (lanjut)")
 
@@ -123,6 +133,29 @@ class SmcLimitManager:
                 return True
         return False
 
+    @staticmethod
+    def _level_terkonfirmasi(pivots, n: int) -> np.ndarray:
+        """Level pivot terakhir yang SUDAH terkonfirmasi di tiap bar (nan kalau belum)."""
+        out = np.full(n, np.nan)
+        p = 0; cur = np.nan
+        for j in range(n):
+            while p < len(pivots) and pivots[p][2] <= j:
+                cur = pivots[p][1]; p += 1
+            out[j] = cur
+        return out
+
+    def _ada_sweep(self, hi, lo, c, lvl_lawan: np.ndarray, i_ob: int, arah: int) -> bool:
+        """Wick menembus pivot lawan lalu close balik ke dalam (ambil likuiditas stop)."""
+        for t in range(max(0, i_ob - self.sweep_window), i_ob + 1):
+            ref = lvl_lawan[t]
+            if ref != ref:                       # nan
+                continue
+            if arah == 1 and lo[t] < ref and c[t] > ref:
+                return True
+            if arah == -1 and hi[t] > ref and c[t] < ref:
+                return True
+        return False
+
     def _setup_terkini(self, h: pd.DataFrame):
         """Telusuri bar PERSIS seperti backtest; kembalikan pending yang aktif di bar akhir.
 
@@ -138,6 +171,8 @@ class SmcLimitManager:
             return None
 
         sh, sl_piv = self._pivots(hi, lo, self.k)
+        lvl_sl = self._level_terkonfirmasi(sl_piv, n) if self.use_sweep else None
+        lvl_sh = self._level_terkonfirmasi(sh, n) if self.use_sweep else None
         i_sh = i_sl = 0
         last_sh = last_sl = None
         sh_ditembus = sl_ditembus = False
@@ -194,6 +229,10 @@ class SmcLimitManager:
                 continue
             if self.use_fvg and not self._ada_fvg(hi, lo, i_ob, j, arah):
                 continue
+            if self.use_sweep:
+                lawan = lvl_sl if arah == 1 else lvl_sh
+                if not self._ada_sweep(hi, lo, c, lawan, i_ob, arah):
+                    continue
 
             buf = (ob_hi - ob_lo) * self.buffer_frac
             if arah == 1:
@@ -362,22 +401,36 @@ class SmcLimitManager:
             logger.info(f"[smcmgr] setup ke-{jumlah + 1}/{self.max_per_day} hari ini "
                         f"({hari}), RR dari {rr.get('sumber')}")
 
-    def run(self) -> None:
-        import MetaTrader5 as mt5
-        if not mt5.initialize():
-            logger.error(f"[smcmgr] MT5 init gagal: {mt5.last_error()}"); return
-        logger.info(f"[smcmgr] hidup. magic={self.magic} {self.symbol} tf={self.timeframe} "
-                    f"k={self.k} rr={self.rr} expiry={self.expiry_bars} bar "
-                    f"fvg={self.use_fvg} dry_run={self.dry_run} poll={self.poll}s")
-        try:
-            while True:
+    def deskripsi(self) -> str:
+        return (f"magic={self.magic} {self.symbol} tf={self.timeframe} k={self.k} "
+                f"rr={self.rr} expiry={self.expiry_bars} bar fvg={self.use_fvg} "
+                f"sweep={self.use_sweep} max/hari={self.max_per_day} "
+                f"dry_run={self.dry_run}")
+
+
+def run_semua(managers: list["SmcLimitManager"]) -> None:
+    """Satu proses menjalankan SEMUA aliran SMC.
+
+    Sengaja satu proses, bukan satu proses per aliran: state, log, dan pengawasan
+    watchdog jadi satu tempat, dan kegagalan MT5 tertangani seragam. Kalau satu
+    aliran melempar exception, aliran lain TETAP jalan (ditangkap per-manager).
+    """
+    import MetaTrader5 as mt5
+    if not mt5.initialize():
+        logger.error(f"[smcmgr] MT5 init gagal: {mt5.last_error()}"); return
+    for m in managers:
+        logger.info(f"[smcmgr] hidup. {m.deskripsi()}")
+    poll = min(m.poll for m in managers)
+    try:
+        while True:
+            for m in managers:
                 try:
-                    self.poll_once(mt5)
+                    m.poll_once(mt5)
                 except Exception:
-                    logger.exception("[smcmgr] poll error (lanjut)")
-                time.sleep(self.poll)
-        finally:
-            mt5.shutdown()
+                    logger.exception(f"[smcmgr] poll error magic={m.magic} (lanjut)")
+            time.sleep(poll)
+    finally:
+        mt5.shutdown()
 
 
 def main() -> None:
@@ -386,7 +439,10 @@ def main() -> None:
              if s.get("type") == "smclimit" and s.get("enabled", False)]
     if not specs:
         logger.info("[smcmgr] tidak ada slot smclimit aktif di config. Keluar."); return
-    SmcLimitManager(cfg, specs[0]).run()
+    magics = [s["magic"] for s in specs]
+    if len(set(magics)) != len(magics):
+        logger.error(f"[smcmgr] magic BENTROK di slot smclimit: {magics}. Keluar."); return
+    run_semua([SmcLimitManager(cfg, s) for s in specs])
 
 
 if __name__ == "__main__":

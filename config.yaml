@@ -624,6 +624,60 @@ live:
                              #   tanpa satu order pun, dan itu terlihat sama persis dengan
                              #   "belum ada sinyal". Harus int epoch. Lihat _place().
 
+    # =================================================================================
+    # SMC XAU H1 — ALIRAN KEDUA (magic 920644). Konfigurasi C: OB + BOS + liquidity
+    # SWEEP (TANPA FVG). Dipasang 2026-08-13 untuk menjawab permintaan user menaikkan
+    # frekuensi tanpa merugi.
+    #
+    # KENAPA INI, PADAHAL STANDALONE-NYA BIASA SAJA:
+    #   H1-C sendirian: 249 trade, +$131.80, PF 1.10, maxDD -44.3%, 5/6 tahun hijau.
+    #   Angka itu tidak istimewa. SELURUH nilainya ada di KORELASI NEGATIF-nya:
+    #     vs ORB -0.24 | vs ETERNA -0.07 | vs SMC H4-B -0.12
+    #   Dia rugi saat yang lain untung, dan untung saat yang lain rugi.
+    #
+    #   Efek ke buku (research/smc_dua_aliran.py):
+    #     ORB+ETERNA             CAGR 43.3%  maxDD -25.0%  Calmar 1.73  Sharpe 1.03
+    #     +H4B                   CAGR 47.4%  maxDD -24.2%  Calmar 1.95  Sharpe 1.14
+    #     +H4B+H1C               CAGR 48.2%  maxDD -17.2%  Calmar 2.80  Sharpe 1.18
+    #   DRAWDOWN TURUN dari -24.2% ke -17.2% justru saat menambah sleeve ber-maxDD -44%.
+    #   Itu diversifikasi bekerja, bukan keberuntungan.
+    #
+    #   Frekuensi SMC: 96 -> 345 order (0.05 -> 0.17/hari, 3.6x) TANPA melonggarkan H4-B.
+    #
+    # CARA MENAIKKAN FREKUENSI YANG SUDAH DIUJI DAN DITOLAK (jangan diulang):
+    #   MTF bias H4 + entry H1 : -$164 / -$101 / -$11 di expiry 12/24/48. RUGI semua.
+    #   H4-B diturunkan ke H1  : -$128   | diturunkan ke M15 : -$397
+    #   M15 D (paling sering, 0.23/hari): +$55 tapi net/DD 1.1 vs 42.5 milik H4-B.
+    #   Kesimpulan: melonggarkan aturan SELALU merugi. Edge SMC ada di selektivitasnya.
+    #
+    # RISIKO YANG HARUS DISADARI: nilai slot ini BERGANTUNG pada korelasi negatif yang
+    # diukur di 66 bulan (-0.12 dan -0.24 = lemah-sedang). Kalau korelasinya bergeser
+    # ke positif, yang tersisa cuma sleeve dengan maxDD -44% dan profit tipis $132/5,5thn.
+    # Ini risiko nyata, bukan formalitas.
+    #
+    # Total trial SMC sekarang 20 (16 awal + 3 MTF + 1 dua-aliran) -> ambang DSR NAIK.
+    # =================================================================================
+    - name: smc_xau_h1
+      enabled: true
+      type: smclimit
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920644          # UNIK (920643 = smc_xau H4)
+      params:
+        timeframe: "1h"
+        swing_k: 3
+        ob_lookback: 10
+        expiry_bars: 12      # 12 bar H1 = 12 jam
+        rr: 2.0
+        buffer_frac: 0.10
+        use_fvg: false       # konfigurasi C: TANPA FVG
+        use_sweep: true      # WAJIB: sweep-lah yang membedakan C. Tanpa itu H1-A = -$5.
+        sweep_window: 5
+        history_bars: 30000  # ~500 bar H1
+        max_setups_per_day: 2
+        manager_poll_seconds: 30
+        dry_run: false
+
     # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
     # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
     # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
@@ -708,7 +762,7 @@ advisor:
   #   1. verdict tercatat SEBELUM fill -> bisa dinilai apakah ia memprediksi hasil
   #   2. order yang KEDALUWARSA tanpa terisi ikut dapat label (16 dari 31 pending di
   #      jendela uji paritas) -> dataset berlabel jadi DUA KALI LIPAT
-  watch_pending: [920643]       # smc_xau
+  watch_pending: [920643, 920644]   # smc_xau (H4) + smc_xau_h1 (H1, aliran kedua)
   timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
   prompt_file: "pipeline/vision/prompt_advisor.md"
   journal_path: "advisor_journal.jsonl"
@@ -720,7 +774,8 @@ advisor:
     - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
     - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
     - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
-    - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau (dipicu ZONA, lihat watch_pending)
+    - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau H4 (dipicu ZONA, lihat watch_pending)
+    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1 (dipicu ZONA)
 
 # MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-
 # date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries
