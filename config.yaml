@@ -834,7 +834,8 @@ advisor:
     - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
     - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
     - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau H4 (dipicu ZONA, lihat watch_pending)
-    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1 (dipicu ZONA)
+    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1 (dipicu POSISI)
+    - {magic: 920627, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # eterna_xau — ditambah 2026-08-13
 
 # MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-
 # date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries

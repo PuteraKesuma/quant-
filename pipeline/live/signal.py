@@ -1687,6 +1687,22 @@ STRATEGY_TYPES = {
 }
 
 
+# Tipe yang DIMILIKI PENUH oleh manager terpisah, bukan oleh brain. Brain harus
+# MELEWATINYA, bukan membangunnya dan bukan pula mati karenanya.
+#
+# Ditambahkan 2026-08-13 setelah uji bunuh-rantai menemukan kegagalan yang BERBAHAYA:
+# slot `smclimit` (enabled: true, dijalankan smc_limit_manager) membuat SignalEngine
+# melempar ValueError saat start -> brain CRASH dan tidak pernah naik lagi. Selama
+# beberapa jam /health tetap hijau semata-mata karena proses brain LAMA masih hidup
+# dari sebelum slot itu ditambahkan. Kalau VPS reboot, brain tidak akan pernah kembali
+# dan eterna_xau berhenti diam-diam - tanpa satu pun tanda di /health.
+#
+# Slot manager memakai `enabled: true` karena manager-nya membaca flag itu untuk
+# memutuskan slot mana yang dijalankan; jadi brain tidak bisa mengandalkan
+# `enabled: false` seperti pada liqlimit yang sudah pensiun.
+MANAGER_OWNED_TYPES = {"smclimit"}   # pipeline/live/smc_limit_manager.py
+
+
 class SignalEngine:
     """Builds strategy slots from config and evaluates all slots for a symbol."""
 
@@ -1696,6 +1712,10 @@ class SignalEngine:
         self.strategies: list[BaseStrategy] = []
         for spec in self.cfg["live"]["strategies"]:
             if not spec.get("enabled", True):        # archived/disabled slots skipped (e.g. Z off)
+                continue
+            if spec["type"] in MANAGER_OWNED_TYPES:
+                logger.info(f"Slot '{spec.get('name')}' (type={spec['type']}) dimiliki "
+                            f"manager terpisah - brain melewatinya.")
                 continue
             cls = STRATEGY_TYPES.get(spec["type"])
             if cls is None:

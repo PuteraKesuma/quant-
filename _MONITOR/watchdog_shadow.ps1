@@ -17,7 +17,7 @@
 #                        lot 0.03). Juga tidak butuh EA.
 #    4. METATRADER 5     sumber bar M1; kalau mati semuanya buta.
 #
-#  SENGAJA TIDAK dijalankan: advisor (membakar kredit API Anthropic), liquidity_manager,
+#  SENGAJA TIDAK dijalankan: liquidity_manager (pensiun),
 #  monthly_governor. Jangan pakai watchdog_brain.ps1 yang lama - dia menghidupkan semua itu.
 #
 #  ------------------------------------------------------------------------------------
@@ -109,6 +109,7 @@ $lastRestart    = (Get-Date).AddHours(-1)
 $lastXauTry     = (Get-Date).AddHours(-1)
 $lastOrbTry     = (Get-Date).AddHours(-1)
 $lastSmcTry     = (Get-Date).AddHours(-1)
+$lastAdvTry     = (Get-Date).AddHours(-1)
 $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
@@ -203,6 +204,19 @@ while ($true) {
             J "ERR" "smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang..."
             StartPy "pipeline.live.smc_limit_manager" "smcmgr_out.log" "smcmgr_err.log"
             $lastSmcTry = $now
+        }
+    }
+
+    # ---------- 4c. advisor (pembaca berita/sentimen) ----------
+    # Dinyalakan 2026-08-13 atas permintaan user. READ-ONLY: dia tidak pernah
+    # memasang, memblokir, atau menutup order - hanya mencatat verdict di samping
+    # trade. Jadi kalau dia mati, TRADING TIDAK TERPENGARUH sama sekali; yang hilang
+    # cuma catatan konteksnya. Karena itu dia dijaga, tapi tidak pernah memicu ERR.
+    if (-not (ProcUp "pipeline\.live\.advisor")) {
+        if (($now - $lastAdvTry).TotalMinutes -ge $ProcCooldownMin) {
+            J "RST" "advisor MATI - catatan berita/sentimen berhenti (trading TIDAK terpengaruh). Menghidupkan ulang..."
+            StartPy "pipeline.live.advisor" "advisor_out.log" "advisor_err.log"
+            $lastAdvTry = $now
         }
     }
 

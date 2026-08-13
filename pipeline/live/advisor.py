@@ -197,9 +197,13 @@ class ShadowAdvisor:
         except Exception as e:
             logger.warning(f"[advisor] capture failed for {w['symbol']}: {e}")
             images = []
+        # web_search juga di jalur POSISI. Tanpa ini advisor menyala tapi TIDAK
+        # membaca berita sama sekali — cacat yang sempat lolos karena semula hanya
+        # jalur pending (zona ter-arm) yang diberi pencarian.
         v = annotate(images, w["symbol"], direction, pos.price_open,
                      client=self._get_client(), system=self.system,
-                     model=self.model, max_tokens=self.max_tokens)
+                     model=self.model, max_tokens=self.max_tokens,
+                     web_search=self.web_search)
         row = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "ticket": int(pos.ticket),
