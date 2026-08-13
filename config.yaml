@@ -589,7 +589,18 @@ live:
     # * ~17-20 order/tahun. Berminggu-minggu tanpa order itu normal.
     # =================================================================================
     - name: smc_xau
-      enabled: true
+      enabled: false         # DIMATIKAN 2026-08-13 atas permintaan user ("smc h4 apus aja").
+                             #
+                             #   HARGANYA, dicatat supaya keputusan ini bisa ditinjau ulang
+                             #   (research: portofolio dgn H1-C versi konfirmasi M5):
+                             #     ORB+ETERNA+H4B+H1C  CAGR 55.8%  maxDD -11.6%  Calmar 4.80  Sharpe 1.52
+                             #     ORB+ETERNA+H1C      CAGR 51.1%  maxDD -12.5%  Calmar 4.10  Sharpe 1.38
+                             #   Jadi H4 MENYUMBANG POSITIF: Calmar -0.70, CAGR -4.7 poin, dan
+                             #   drawdown justru sedikit MEMBURUK tanpa dia (-11.6% -> -12.5%).
+                             #   Sendirian H4-B: 99 trade, +$922.15, PF 2.22, maxDD -9.4%.
+                             #
+                             #   Menghidupkan lagi: cukup set true + restart smc_limit_manager.
+                             #   Tidak ada yang perlu diubah selain baris ini.
       type: smclimit         # dipungut oleh pipeline/live/smc_limit_manager.py
       symbol: XAUUSD
       lot: 0.01              # tetap 0.01 sesuai aturan berdiri user: jangan naikkan
@@ -796,7 +807,7 @@ advisor:
   #   1. verdict tercatat SEBELUM fill -> bisa dinilai apakah ia memprediksi hasil
   #   2. order yang KEDALUWARSA tanpa terisi ikut dapat label (16 dari 31 pending di
   #      jendela uji paritas) -> dataset berlabel jadi DUA KALI LIPAT
-  watch_pending: [920643, 920644]   # smc_xau (H4) + smc_xau_h1 (H1, aliran kedua)
+  watch_pending: [920644]           # smc_xau_h1. 920643 (H4) dimatikan 2026-08-13.
   timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
   prompt_file: "pipeline/vision/prompt_advisor.md"
   journal_path: "advisor_journal.jsonl"
