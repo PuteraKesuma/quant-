@@ -709,7 +709,7 @@ live:
 # =====================================================================================
 smc_rr:
   enabled: true
-  model: "claude-opus-5"
+  model: "claude-sonnet-5"   # 2026-08-13 permintaan user: Sonnet biar murah
   max_tokens: 1200
   timeout_seconds: 90         # panggilan sinkron di loop manager -> WAJIB ada timeout
   web_search: true            # baca kalender ekonomi + berita emas langsung
@@ -738,12 +738,13 @@ vision:
 advisor:
   enabled: true
   poll_seconds: 15              # how often to scan MT5 for a new position (read-only)
-  model: "claude-opus-5"        # 2026-08-13: Sonnet -> Opus 5. Alasannya ANGKA, bukan selera:
-                                #   pemicu SMC berbasis ZONA, dan zona cuma ~20/tahun. Sekali
-                                #   panggil ~$0.06 -> ~$1.20/tahun. Perbedaan biaya Sonnet vs
-                                #   Opus di volume segitu tidak berarti; kualitas penilaian
-                                #   berarti. (Kekhawatiran biaya 2026-07-03 berlaku untuk
-                                #   pemicu per-POSISI yang jauh lebih sering.)
+  model: "claude-sonnet-5"      # 2026-08-13 permintaan user: pakai Sonnet biar murah.
+                                #   Perkiraanku semula (~$1.20/tahun) TERLALU RENDAH: itu
+                                #   dihitung tanpa web_search dan tanpa gambar chart, dan
+                                #   memakai ~20 zona/tahun padahal hitungan pastinya 119
+                                #   (H4 38 + H1 81 — yang dihitung ZONA TER-ARM, bukan yang
+                                #   terisi). Dengan Sonnet 5 total ~$25-30/tahun.
+                                #   Sonnet 5 mendukung web_search_20260209.
   max_tokens: 1500              # dinaikkan dari 700: panggilan ber-web_search perlu ruang
                                 #   untuk merangkum temuan kalender + berita ke dalam JSON.
   web_search: true              # 2026-08-13 INTI PERMINTAAN USER "data ke LLM lebih valid":

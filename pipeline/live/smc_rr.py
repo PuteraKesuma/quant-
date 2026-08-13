@@ -77,6 +77,24 @@ class RrAgent:
         except Exception as e:
             logger.warning(f"[smcrr] gagal menulis jurnal: {e}")
 
+    @staticmethod
+    def _akumulasi(akun: dict, resp) -> None:
+        """Kumpulkan pemakaian token supaya biaya NYATA bisa diukur, bukan ditebak.
+
+        Konsumsi token web_search adalah bagian yang paling tidak pasti dari
+        perkiraan biaya; mencatatnya membuat perkiraan itu bisa dikoreksi oleh data.
+        """
+        try:
+            u = resp.usage
+            akun["in"] += int(getattr(u, "input_tokens", 0) or 0)
+            akun["in"] += int(getattr(u, "cache_read_input_tokens", 0) or 0)
+            akun["out"] += int(getattr(u, "output_tokens", 0) or 0)
+            st = getattr(u, "server_tool_use", None)
+            if st is not None:
+                akun["cari"] += int(getattr(st, "web_search_requests", 0) or 0)
+        except Exception:
+            pass
+
     def _client_or_none(self):
         if self._client is None:
             try:
@@ -203,16 +221,20 @@ class RrAgent:
         if self.web_search:
             kw["tools"] = [{"type": "web_search_20260209", "name": "web_search",
                             "max_uses": 4}]
+        pakai_token = {"in": 0, "out": 0, "cari": 0}
         try:
             msgs = [{"role": "user", "content": content}]
             resp = client.messages.create(model=self.model, max_tokens=self.max_tokens,
                                           messages=msgs, **kw)
             for _ in range(2):
+                self._akumulasi(pakai_token, resp)
                 if getattr(resp, "stop_reason", None) != "pause_turn":
                     break
                 msgs = msgs + [{"role": "assistant", "content": resp.content}]
                 resp = client.messages.create(model=self.model, max_tokens=self.max_tokens,
                                               messages=msgs, **kw)
+            else:
+                self._akumulasi(pakai_token, resp)
             texts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
             usul = None
             for t in reversed(texts):
@@ -242,7 +264,8 @@ class RrAgent:
                      "ditolak": tolak, "sumber": pakai["sumber"], "skip": skip,
                      "verdict": aksi, "event_risk": str(usul.get("event_risk", ""))[:400],
                      "confidence": usul.get("confidence"),
-                     "reason": pakai["reason"], "charts": [l for l, _ in images]})
+                     "reason": pakai["reason"], "charts": [l for l, _ in images],
+                     "model": self.model, "token": pakai_token})
         if tolak:
             logger.warning(f"[smcrr] usul agent DITOLAK sebagian: {'; '.join(tolak)}")
         logger.info(f"[smcrr] {aksi} sumber={pakai['sumber']} sl={pakai['sl']} "
