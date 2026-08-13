@@ -1676,3 +1676,42 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-13 08:12:02 UTC** RST [wd] Brain DOWN (27 cek gagal) - menjalankan ulang...
 - **2026-08-13 08:12:33 UTC** OK  [wd] Brain PULIH - health OK lagi.
 - **2026-08-13 08:12:33 UTC** SIG [wd] eterna_xau:  -> FLAT  sl=0.0 tp=0.0
+- **2026-08-13 08:15:17 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-13 08:23:35 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-13 08:28:11 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 08:32:24 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-13 08:58:13 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 09:28:21 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 09:58:51 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 10:29:21 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 10:59:28 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 11:29:58 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 12:00:25 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 12:30:35 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 13:00:43 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 13:30:52 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 14:01:02 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 14:31:13 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 15:01:20 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 15:31:35 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 16:01:43 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 16:31:54 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 17:02:16 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 17:32:21 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 18:02:51 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 18:33:22 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 19:03:21 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 19:33:23 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 20:03:52 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 20:34:18 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 21:04:24 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 21:34:49 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 22:04:53 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-13 22:33:20 UTC** WRN [wd] Health gagal (1). Menunggu konfirmasi...
+- **2026-08-13 22:33:20 UTC** ERR [wd] xau_executor MATI - slot XAU tidak mengirim order sama sekali. Menghidupkan ulang...
+- **2026-08-13 22:33:20 UTC** ERR [wd] orb_stop_manager MATI - sleeve ORB (43% bobot) tidak jalan. Menghidupkan ulang...
+- **2026-08-13 22:33:20 UTC** ERR [wd] smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang...
+- **2026-08-13 22:33:20 UTC** RST [wd] advisor MATI - catatan berita/sentimen berhenti (trading TIDAK terpengaruh). Menghidupkan ulang...
+- **2026-08-13 22:34:25 UTC** RST [wd] Brain DOWN (3 cek gagal) - menjalankan ulang...
+- **2026-08-13 22:34:55 UTC** OK  [wd] Brain PULIH - health OK lagi.
+- **2026-08-13 22:34:55 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.

@@ -18,6 +18,7 @@ class DataProvider:
         self.cfg = cfg or load_config()
         self._initialized = False
         self._offset_hours: int | None = None   # cached broker server->UTC offset
+        self._offset_calon: int | None = None   # calon offset baru, menunggu konfirmasi ke-2
 
     def _ensure_mt5(self):
         import MetaTrader5 as mt5
@@ -66,14 +67,37 @@ class DataProvider:
         offset disagrees with a freshly detected one (likely a DST change)."""
         configured = self.cfg.get("live", {}).get("mt5_server_utc_offset_hours")
 
+        # ---------------------------------------------------------------------
+        # CATATAN BUG (diperbaiki 2026-08-13) - jangan longgarkan ambang di bawah.
+        #
+        # Versi lama memakai `abs(diff - nearest) <= 0.5` sebagai penjaga "tick segar".
+        # Syarat itu SELALU BENAR: round() ke bilangan bulat terdekat, menurut
+        # definisinya, selalu menyisakan <= 0.5. Jadi penjaganya tidak menyaring
+        # apa pun. Tick yang basi 40 menit memberi diff 2.33 -> nearest 2 -> sisa
+        # 0.33 -> lolos sebagai "segar", dan offset jadi +2 padahal sebenarnya +3.
+        #
+        # Terpantau NYATA 4 kali (17 Jul 2x, 13 Agu 2x), selalu di jam sepi. Salah
+        # 1 jam menggeser batas bar H1/H4 -> BOS dihitung di bar yang salah, expiry
+        # order meleset sejam, dan jendela sesi ORB (13:30 UTC) ikut bergeser.
+        #
+        # Perbaikan: (1) sisa harus mendekati NOL, bukan <= 0.5; tick segar memberi
+        # sisa dalam hitungan detik. (2) offset yang sudah mapan hanya boleh berubah
+        # setelah dua deteksi berturut-turut sepakat - supaya satu tick aneh tidak
+        # cukup menggesernya, tapi pergantian DST tetap tertangkap.
+        # ---------------------------------------------------------------------
+        TOLERANSI_JAM = 0.08          # ~5 menit; tick segar jauh di bawah ini
+
         detected = None
         tick = mt5.symbol_info_tick(mt5_symbol)
         if tick and tick.time:
             server_now = pd.Timestamp(tick.time, unit="s", tz="UTC")
-            diff = (server_now - pd.Timestamp.utcnow()).total_seconds() / 3600.0
+            diff = (server_now - pd.Timestamp.now("UTC")).total_seconds() / 3600.0
             nearest = round(diff)
-            if abs(diff - nearest) <= 0.5 and -12 <= nearest <= 14:   # fresh, sane
-                detected = nearest
+            if abs(diff - nearest) <= TOLERANSI_JAM and -12 <= nearest <= 14:
+                detected = int(nearest)
+            else:
+                logger.debug(f"offset diabaikan: tick basi (diff {diff:+.3f}h, "
+                             f"sisa {abs(diff - nearest):.3f}h > {TOLERANSI_JAM})")
 
         if configured is not None:
             if detected is not None and detected != configured:
@@ -82,10 +106,25 @@ class DataProvider:
                     f"offset looks like {detected} (DST change?). Update config.yaml."
                 )
             offset = int(configured)
-        elif detected is not None:
+        elif detected is None:
+            offset = self._offset_hours or 0   # tick tidak dipercaya -> pertahankan
+        elif self._offset_hours is None:
+            offset = detected                  # deteksi pertama: langsung dipakai
+        elif detected == self._offset_hours:
+            self._offset_calon = None          # stabil
             offset = detected
         else:
-            offset = self._offset_hours or 0   # keep last good; 0 until first detect
+            # Berbeda dari yang mapan: butuh KONFIRMASI kedua sebelum digeser.
+            if getattr(self, "_offset_calon", None) == detected:
+                logger.warning(f"MT5 offset berubah {self._offset_hours:+d}h -> "
+                               f"{detected:+d}h (dikonfirmasi 2x; pergantian DST?)")
+                self._offset_calon = None
+                offset = detected
+            else:
+                self._offset_calon = detected
+                logger.info(f"offset terdeteksi {detected:+d}h berbeda dari "
+                            f"{self._offset_hours:+d}h - menunggu konfirmasi kedua")
+                offset = self._offset_hours
 
         if offset != self._offset_hours:
             logger.info(f"MT5 server->UTC offset = {offset:+d}h")
