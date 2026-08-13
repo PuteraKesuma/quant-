@@ -807,7 +807,21 @@ advisor:
   #   1. verdict tercatat SEBELUM fill -> bisa dinilai apakah ia memprediksi hasil
   #   2. order yang KEDALUWARSA tanpa terisi ikut dapat label (16 dari 31 pending di
   #      jendela uji paritas) -> dataset berlabel jadi DUA KALI LIPAT
-  watch_pending: [920644]           # smc_xau_h1. 920643 (H4) dimatikan 2026-08-13.
+  watch_pending: []             # KOSONG sejak 2026-08-13, dan ini disengaja.
+                                #   Pemicu ini menyala saat PENDING LIMIT terpasang. Sejak
+                                #   smc_xau_h1 pindah ke entry_mode "m5_confirm" dia tidak
+                                #   memasang pending sama sekali (langsung MARKET setelah
+                                #   BOS M5), dan smc_xau H4 dimatikan. Jadi tidak ada lagi
+                                #   pending yang bisa memicunya - membiarkan [920644] di sini
+                                #   hanya menyesatkan: kelihatan aktif padahal mati.
+                                #   Isi lagi kalau ada slot smclimit ber-entry_mode "limit".
+                                #
+                                #   PEMBACAAN BERITA/SENTIMEN TIDAK HILANG: itu dikerjakan
+                                #   pipeline/live/smc_rr.py (blok `smc_rr` di bawah), yang
+                                #   dipanggil SEBELUM order dikirim - tempat yang lebih
+                                #   berguna, karena hasil bacaannya masih bisa mengubah
+                                #   SL/TP/time-exit. Advisor cuma mengulangnya SETELAH posisi
+                                #   terbuka, dengan biaya sama tapi tanpa bisa bertindak.
   timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
   prompt_file: "pipeline/vision/prompt_advisor.md"
   journal_path: "advisor_journal.jsonl"
