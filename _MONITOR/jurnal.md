@@ -1751,3 +1751,4 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-14 07:11:50 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-14 07:42:03 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-14 08:12:12 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-14 08:32:39 UTC** ERR [wd] smc_limit_manager MATI - sleeve SMC tidak memasang zona baru. Menghidupkan ulang...

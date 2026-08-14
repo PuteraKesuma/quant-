@@ -600,8 +600,14 @@ class SmcLimitManager:
             return
 
         # --- batas setup per hari ---------------------------------------------
+        # Sumber kebenaran SAMA dengan jalur m5_confirm: riwayat deal MT5 (TRADE nyata),
+        # bukan file state. Sebelumnya jalur ini memakai state, sehingga order limit yang
+        # dipasang lalu DIBATALKAN tetap memakan jatah harian - persis bug yang sudah
+        # diperbaiki di jalur m5_confirm. Dua jalur harus menghitung hal yang sama.
         hari = pd.Timestamp.now("UTC").strftime("%Y-%m-%d")
-        jumlah = int(st.get("jumlah", 0)) if st.get("hari") == hari else 0
+        nyata = self._trade_hari_ini(mt5)
+        jumlah = nyata if nyata >= 0 else (
+            int(st.get("jumlah", 0)) if st.get("hari") == hari else 0)
         if jumlah >= self.max_per_day:
             logger.info(f"[smcmgr] batas {self.max_per_day} setup/hari sudah tercapai "
                         f"({jumlah} hari ini) -> zona {bos_key} DILEWATI")
