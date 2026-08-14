@@ -68,9 +68,19 @@ print("\n" + "=" * 92); print("D. RISIKO YANG DIIZINKAN"); print("=" * 92)
 g = cfg.get("governor", {})
 lapor("OK" if g.get("enabled") else "PERHATIAN", "governor", g.get("enabled"))
 mr = g.get("max_risk_per_trade", 0)
-lapor("PERHATIAN" if mr > ai.balance * 0.10 else "OK", "max_risk_per_trade",
-      "$%d (%.0f%% akun)" % (mr, 100*mr/ai.balance),
-      "SMC pernah $40 = 7.7%; batas ini jauh lebih longgar" if mr > ai.balance*0.10 else "")
+# Batas per-sleeve (sl_maks_usd) kini lebih ketat dari governor, jadi governor
+# berfungsi sebagai jaring TERAKHIR - bukan pengendali utama. Yang perlu diperiksa:
+# apakah tiap sleeve punya batasnya sendiri, dan apakah semuanya di bawah governor.
+caps = {}
+for nm, sp2 in S.items():
+    if sp2.get("type") == "smclimit" and sp2.get("enabled"):
+        caps[nm] = float(sp2.get("params", {}).get("sl_maks_usd", 0.0))
+lapor("OK", "governor max_risk (jaring akhir)", "$%d (%.0f%% akun)" % (mr, 100*mr/ai.balance))
+for nm, cv in caps.items():
+    ok = 0 < cv <= mr
+    lapor("OK" if ok else "PERHATIAN", "  batas %s" % nm,
+          ("$%.0f (%.1f%% akun)" % (cv, 100*cv/ai.balance)) if cv > 0 else "TANPA batas",
+          "" if ok else "tidak ada batas per-sleeve; hanya governor yang menahan")
 gj = Path(r"C:\Quant\_MONITOR\governor.json")
 lapor("OK" if gj.exists() else "PERHATIAN", "governor.json",
       "ada" if gj.exists() else "TIDAK ADA", "" if gj.exists() else "signal.py fail-closed ke config")
