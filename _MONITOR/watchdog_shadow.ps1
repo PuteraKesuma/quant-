@@ -17,8 +17,8 @@
 #                        lot 0.03). Juga tidak butuh EA.
 #    4. METATRADER 5     sumber bar M1; kalau mati semuanya buta.
 #
-#  SENGAJA TIDAK dijalankan: liquidity_manager (pensiun),
-#  monthly_governor. Jangan pakai watchdog_brain.ps1 yang lama - dia menghidupkan semua itu.
+#  SENGAJA TIDAK dijalankan: liquidity_manager (pensiun).
+#  Jangan pakai watchdog_brain.ps1 yang lama.
 #
 #  ------------------------------------------------------------------------------------
 #  SIAPA YANG MENJAGA WATCHDOG (ditambahkan 2026-08-11)
@@ -110,6 +110,7 @@ $lastXauTry     = (Get-Date).AddHours(-1)
 $lastOrbTry     = (Get-Date).AddHours(-1)
 $lastSmcTry     = (Get-Date).AddHours(-1)
 $lastAdvTry     = (Get-Date).AddHours(-1)
+$lastGovTry     = (Get-Date).AddHours(-1)
 $lastMt5Try     = (Get-Date).AddHours(-1)
 $lastHeartbeat  = (Get-Date).AddHours(-1)
 $lastSignalPoll = (Get-Date).AddHours(-1)
@@ -217,6 +218,19 @@ while ($true) {
             J "RST" "advisor MATI - catatan berita/sentimen berhenti (trading TIDAK terpengaruh). Menghidupkan ulang..."
             StartPy "pipeline.live.advisor" "advisor_out.log" "advisor_err.log"
             $lastAdvTry = $now
+        }
+    }
+
+    # ---------- 4d. monthly_governor (rem darurat) ----------
+    # Dinyalakan 2026-08-14. Sebelumnya TIDAK dijalankan, dan akibatnya governor.json
+    # membeku sejak 6 Agustus: max_risk_per_trade masih terbaca (nilai statis) TAPI rem
+    # harian dan rem kerugian maksimum MATI, karena keduanya butuh today_realized dan
+    # equity yang diperbarui. Dua dari tiga proteksi terakhir tidak berfungsi.
+    if (-not (ProcUp "pipeline\.live\.monthly_governor")) {
+        if (($now - $lastGovTry).TotalMinutes -ge $ProcCooldownMin) {
+            J "ERR" "monthly_governor MATI - rem harian & rem kerugian maks tidak berfungsi. Menghidupkan ulang..."
+            StartPy "pipeline.live.monthly_governor" "gov_out.log" "gov_err.log"
+            $lastGovTry = $now
         }
     }
 

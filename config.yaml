@@ -881,7 +881,14 @@ advisor:
 governor:
   enabled: true
   mode: rules                         # 2026-07-12 FBS-Demo forward-test: keep RULES path active (exercises the fixed cap)
-  magics: [920617, 920622, 920626]   # ORB + Z + Golden (the live book)
+  magics: [920617, 920622, 920626]   # HANYA untuk _book_conflict di signal.py (cegah dua
+                                     #   sleeve searah di simbol sama). JANGAN tambahkan
+                                     #   eterna/SMC ke sini - mereka memang dirancang
+                                     #   independen, dan memblokir mereka mengulang
+                                     #   kesalahan ZREV (-$1.526 entry eterna hilang).
+  # 2026-08-14: akuntansi PnL + flatten memakai daftar TERPISAH ini. Sebelumnya governor
+  # hanya menghitung ORB, jadi rem harian buta terhadap 3/4 buku.
+  pnl_magics: [920617, 920627, 920643, 920644]   # ORB + ETERNA + SMC H4 + SMC H1
   # --- demo-safe numbers (FBS-Demo 106271896, ~$287). Floor/daily LOOSE so they don't nuisance-trip a forward test;
   #     the per-trade risk cap stays $90 (harmless at 0.01 lot, but blocks any absurdly-wide stop). All values are
   #     read live from governor.json; if that file is missing, signal.py now FAILS CLOSED to max_risk_per_trade here. ---

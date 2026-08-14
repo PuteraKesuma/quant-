@@ -21,9 +21,9 @@ S = {s.get("name"): s for s in cfg["live"]["strategies"]}
 
 print("=" * 92); print("A. PROSES & PENGAWASAN"); print("=" * 92)
 n_py = ps("(Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*pipeline.live*' } | Measure-Object).Count")
-lapor("OK" if n_py == "5" else "BAHAYA", "proses trading", n_py + " / 5")
+lapor("OK" if n_py == "6" else "BAHAYA", "proses trading", n_py + " / 6")
 mods = ps("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*pipeline.live*' } | ForEach-Object { ($_.CommandLine -split 'pipeline\\.live\\.')[-1] }")
-for w in ("run_server", "xau_executor", "orb_stop_manager", "smc_limit_manager", "advisor"):
+for w in ("run_server", "xau_executor", "orb_stop_manager", "smc_limit_manager", "advisor", "monthly_governor"):
     lapor("OK" if w in mods else "BAHAYA", "  " + w, "hidup" if w in mods else "MATI")
 
 st = ps("(Get-ScheduledTask -TaskName 'Quant Watchdog').State")

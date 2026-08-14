@@ -28,7 +28,11 @@ BOOK_CSV = Path(r"C:\Quant\research\book_weekly.csv")
 class MonthlyGovernor:
     def __init__(self, cfg: dict):
         g = cfg.get("governor", {})
-        self.magics = set(g.get("magics", [920617, 920622, 920626]))
+        # `magics` di config dipakai signal.py untuk _book_conflict (mencegah dua sleeve
+        # searah di simbol sama). Menambahkan sleeve baru ke situ akan membuat mereka
+        # saling memblokir - persis kesalahan ZREV yang memakan -$1.526 entry eterna.
+        # Karena itu akuntansi PnL/flatten memakai `pnl_magics` yang TERPISAH.
+        self.magics = set(g.get("pnl_magics") or g.get("magics", [920617, 920622, 920626]))
         self.mode = str(g.get("mode", "profit"))            # 'profit' (bersyukur) | 'rules' (prop)
         self.threshold = float(g.get("threshold", 0.75))
         self.poll = int(g.get("poll_seconds", 300))

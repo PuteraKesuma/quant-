@@ -50,6 +50,21 @@ from .data import DataProvider
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE = ROOT / "_MONITOR" / "smc_state.json"
+GOV = ROOT / "_MONITOR" / "governor.json"
+
+
+def _governor_menjeda() -> bool:
+    """True kalau governor sedang menjeda entry baru.
+
+    Ditambahkan 2026-08-14: sebelumnya manager ini SAMA SEKALI tidak mengenal
+    governor (0 rujukan), jadi SMC akan tetap membuka posisi meski rem harian atau
+    rem kerugian maksimum sudah aktif. Sengaja FAIL-OPEN kalau file tidak terbaca:
+    governor mati tidak boleh mematikan trading, hanya jeda EKSPLISIT yang boleh.
+    """
+    try:
+        return bool(json.loads(GOV.read_text(encoding="utf-8")).get("paused", False))
+    except Exception:
+        return False
 
 
 class SmcLimitManager:
@@ -483,6 +498,11 @@ class SmcLimitManager:
         if my_pos:                                   # satu posisi -> broker yang urus SL/TP
             for o in my_pend:
                 self._cancel(mt5, o.ticket)
+            return
+
+        if _governor_menjeda():
+            for o in my_pend:
+                self._cancel(mt5, o.ticket)      # jangan tinggalkan pending saat dijeda
             return
 
         h = self._bar_selesai()
