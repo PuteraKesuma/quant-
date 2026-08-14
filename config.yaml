@@ -616,6 +616,12 @@ live:
         # SL H4 jauh lebih lebar (median $9.80, p90 $36.57, maks $101.11) sehingga
         # lot besar datang tepat saat risikonya paling tidak menentu.
         risk_pct: 0.0        # 0 = pakai `lot` di atas apa adanya
+        sl_maks_usd: 0.0     # TANPA batas, keputusan user 2026-08-14. Batas $20 diuji
+                             #   dan MERUSAK H4: net $922 -> $130, PF 2.22 -> 1.30,
+                             #   maxDD -9.4% -> -12.9%, karena membuang 39 dari 210
+                             #   zona termasuk pemenang besarnya. Zona H4 struktural
+                             #   lebih lebar (p90 $36.57, maks $101.11).
+                             #   Yang menahan sisi ini: governor max_risk_per_trade $90.
         max_setups_per_day: 2  # 2026-08-13 permintaan user: "1 hari maksimal 2 trade".
                              #   Dihitung per hari UTC, menghitung ORDER YANG DIPASANG
                              #   (bukan yang terisi) — sesuai "maksimal 2 kali set".
@@ -719,6 +725,13 @@ live:
         # TIDAK ADA plafon yang MELEWATI trade - diuji dan merusak (plafon 3% di H4
         # membuang 26 dari 99 trade, Calmar 2.23 -> 0.24). Kalau lot minimum sudah
         # melewati target risiko, trade tetap DIAMBIL di 0.01.
+        # Batas KERAS risiko per trade (permintaan user 2026-08-14). Zona ber-SL
+        # lebih lebar dari ini DILEWATI, bukan dipaksa dengan SL dipersempit.
+        # Diukur: PF 2.65 -> 2.86, maxDD -4.4% -> -4.6%, net $1280 -> $920, 34 zona
+        # dilewati dari 443. Kualitas MEMBAIK, harganya $360 net dalam 5,5 tahun.
+        # rr tetap 2.0: rr 3 -> PF 1.95, rr 5 (TP $100) -> PF 1.38 dan win rate
+        # runtuh 69% -> 34%. TP $100 dengan SL $20 menuntut gerak 5x, terlalu jarang.
+        sl_maks_usd: 20.0
         risk_pct: 0.02
         lot_maks: 0.05       # plafon konservatif; naikkan hanya kalau saldo DAN bukti
                              #   statistiknya sudah tumbuh, bukan salah satunya saja.

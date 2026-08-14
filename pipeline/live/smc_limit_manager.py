@@ -118,6 +118,21 @@ class SmcLimitManager:
         self.risk_pct = float(p.get("risk_pct", 0.0))     # 0 = pakai lot tetap
         self.lot_maks = float(p.get("lot_maks", 0.05))
         self.contract = float(p.get("contract_size", 100.0))
+        # Batas KERAS risiko per trade dalam dolar (permintaan user 2026-08-14:
+        # "jangan sampe 100 dollar paling 20 dollar"). Zona yang SL-nya melewati ini
+        # DILEWATI, bukan dipaksa masuk dengan SL yang dipersempit - SL harus tetap
+        # di luar zona OB atau logikanya rusak.
+        #
+        # Diukur di scratchpad (215 zona H1, 210 zona H4):
+        #   H1 batas $20 rr2 : PF 2.65 -> 2.86, maxDD -4.4% -> -4.6%, net $1280 -> $920
+        #                      MEMBAIK kualitasnya; 34 zona dilewati. DIPASANG.
+        #   H4 batas $20 rr2 : net $922 -> $130, PF 2.22 -> 1.30, maxDD -9.4% -> -12.9%
+        #                      MERUSAK; 39 dari 210 zona dibuang termasuk pemenang
+        #                      besarnya. TIDAK dipasang atas keputusan user.
+        # rr 3 dan 5 juga diuji dan keduanya MERUSAK (win rate 69% -> 51% -> 34%):
+        # TP $100 dengan SL $20 menuntut harga bergerak 5x lebih jauh ke arah kita,
+        # dan itu terlalu jarang. rr 2 yang benar.
+        self.sl_maks_usd = float(p.get("sl_maks_usd", 0.0))   # 0 = tanpa batas
         self.data = DataProvider(cfg)
         from .smc_rr import RrAgent
         self.rr_agent = RrAgent(cfg)
@@ -376,6 +391,17 @@ class SmcLimitManager:
                "comment": "smc_m5"}
         return self._send(mt5, req, f"MARKET {'BUY' if arah == 1 else 'SELL'} (konfirmasi M5)")
 
+    def _lewati_karena_sl(self, price: float, sl: float) -> bool:
+        """True kalau risiko zona ini melewati batas keras dolar."""
+        if self.sl_maks_usd <= 0:
+            return False
+        risiko = abs(price - sl) * self.contract * 0.01     # pada lot minimum
+        if risiko > self.sl_maks_usd:
+            logger.info(f"[smcmgr] {self.magic} zona DILEWATI: risiko ${risiko:.2f} "
+                        f"> batas ${self.sl_maks_usd:.2f} (SL ${abs(price-sl):.2f})")
+            return True
+        return False
+
     def _hitung_lot(self, mt5, price: float, sl: float) -> float:
         """Lot dari risiko sesuai balance. Kembalikan lot tetap kalau risk_pct = 0."""
         if self.risk_pct <= 0:
@@ -512,6 +538,11 @@ class SmcLimitManager:
 
         if setup is None:
             for o in my_pend:                        # tidak ada setup aktif -> bersihkan
+                self._cancel(mt5, o.ticket)
+            return
+
+        if self._lewati_karena_sl(setup["price"], setup["sl"]):
+            for o in my_pend:
                 self._cancel(mt5, o.ticket)
             return
 
