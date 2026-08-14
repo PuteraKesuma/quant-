@@ -616,12 +616,22 @@ live:
         # SL H4 jauh lebih lebar (median $9.80, p90 $36.57, maks $101.11) sehingga
         # lot besar datang tepat saat risikonya paling tidak menentu.
         risk_pct: 0.0        # 0 = pakai `lot` di atas apa adanya
-        sl_maks_usd: 0.0     # TANPA batas, keputusan user 2026-08-14. Batas $20 diuji
-                             #   dan MERUSAK H4: net $922 -> $130, PF 2.22 -> 1.30,
-                             #   maxDD -9.4% -> -12.9%, karena membuang 39 dari 210
-                             #   zona termasuk pemenang besarnya. Zona H4 struktural
-                             #   lebih lebar (p90 $36.57, maks $101.11).
-                             #   Yang menahan sisi ini: governor max_risk_per_trade $90.
+        sl_maks_usd: 50.0    # 2026-08-14 permintaan user: kunci H4 di $50.
+                             #   Diukur (210 zona, rr2): tanpa batas $922.15 PF 2.22
+                             #   maxDD -9.4% | batas $50 -> $383.39 PF 1.55 maxDD -13.6%,
+                             #   10 zona dilewati. Memangkas 58% profit H4.
+                             #   CATATAN: $50 kebetulan lebih buruk dari $40 ($544.81)
+                             #   MAUPUN $60 ($490.52). Non-monotonik begitu berarti
+                             #   selisih antar batas di rentang ini adalah NOISE - dengan
+                             #   hanya 10 zona dilewati, membuang satu pemenang besar
+                             #   sudah menggeser hasilnya. Yang nyata cuma polanya:
+                             #   makin ketat, makin banyak hilang. Jangan menyetel angka
+                             #   ini mencari yang "terbaik" - itu memilih noise.
+                             #   Pembanding: governor $90 memangkas 22% ($718.44).
+                             # (batas $20 diuji lebih dulu dan jauh lebih merusak:
+                             #  net $922 -> $130, PF 2.22 -> 1.30, 39 dari 210 zona
+                             #  dibuang. Zona H4 struktural lebih lebar: p90 $36.57,
+                             #  maks $101.11.)
         max_setups_per_day: 2  # 2026-08-13 permintaan user: "1 hari maksimal 2 trade".
                              #   Dihitung per hari UTC, menghitung ORDER YANG DIPASANG
                              #   (bukan yang terisi) — sesuai "maksimal 2 kali set".
