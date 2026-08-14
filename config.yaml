@@ -589,18 +589,12 @@ live:
     # * ~17-20 order/tahun. Berminggu-minggu tanpa order itu normal.
     # =================================================================================
     - name: smc_xau
-      enabled: false         # DIMATIKAN 2026-08-13 atas permintaan user ("smc h4 apus aja").
-                             #
-                             #   HARGANYA, dicatat supaya keputusan ini bisa ditinjau ulang
-                             #   (research: portofolio dgn H1-C versi konfirmasi M5):
-                             #     ORB+ETERNA+H4B+H1C  CAGR 55.8%  maxDD -11.6%  Calmar 4.80  Sharpe 1.52
-                             #     ORB+ETERNA+H1C      CAGR 51.1%  maxDD -12.5%  Calmar 4.10  Sharpe 1.38
-                             #   Jadi H4 MENYUMBANG POSITIF: Calmar -0.70, CAGR -4.7 poin, dan
-                             #   drawdown justru sedikit MEMBURUK tanpa dia (-11.6% -> -12.5%).
-                             #   Sendirian H4-B: 99 trade, +$922.15, PF 2.22, maxDD -9.4%.
-                             #
-                             #   Menghidupkan lagi: cukup set true + restart smc_limit_manager.
-                             #   Tidak ada yang perlu diubah selain baris ini.
+      enabled: true          # DINYALAKAN LAGI 2026-08-14 atas permintaan user.
+                             #   Sempat dimatikan 2026-08-13, tapi angkanya memang
+                             #   mendukung dia hidup: Calmar buku 4.80 dengan H4,
+                             #   4.10 tanpa dia; drawdown juga sedikit lebih baik
+                             #   (-11.6% vs -12.5%). Sendirian: 99 trade, +$922.15,
+                             #   PF 2.22, maxDD -9.4% (resolusi exit M5).
       type: smclimit         # dipungut oleh pipeline/live/smc_limit_manager.py
       symbol: XAUUSD
       lot: 0.01              # tetap 0.01 sesuai aturan berdiri user: jangan naikkan
@@ -616,6 +610,12 @@ live:
         buffer_frac: 0.10    # SL = di luar zona + 10% tinggi zona
         use_fvg: true        # WAJIB: tanpa FVG (konfig A) H4 rugi -$168.92
         history_bars: 60000  # ~1000 bar H4 dari M1
+        # RISIKO SESUAI BALANCE — H4 SENGAJA TETAP LOT TETAP.
+        # research/smc_sizing.py: H4-B lot tetap 0.01 -> Calmar 2.23, sedangkan
+        # risk 2% -> 1.68 dan risk 3% -> 1.05. Sizing MEMPERBURUK di sini karena
+        # SL H4 jauh lebih lebar (median $9.80, p90 $36.57, maks $101.11) sehingga
+        # lot besar datang tepat saat risikonya paling tidak menentu.
+        risk_pct: 0.0        # 0 = pakai `lot` di atas apa adanya
         max_setups_per_day: 2  # 2026-08-13 permintaan user: "1 hari maksimal 2 trade".
                              #   Dihitung per hari UTC, menghitung ORDER YANG DIPASANG
                              #   (bukan yang terisi) — sesuai "maksimal 2 kali set".
@@ -701,6 +701,28 @@ live:
         konfirm_bars_m5: 12       # 12 bar M5 = 60 menit setelah zona tersentuh
         konfirm_max_umur_bar: 2   # konfirmasi >2 bar M5 yang lalu = harga basi, lewati
         history_bars: 30000  # ~500 bar H1
+        # RISIKO SESUAI BALANCE (permintaan user 2026-08-14).
+        # lot = (balance x risk_pct) / (jarak_SL x 100), dibulatkan ke bawah ke
+        # kelipatan volume broker, dijepit ke [0.01, lot_maks].
+        #
+        # research/smc_sizing.py, equity di-compound dari $523 (215 trade):
+        #   lot tetap 0.01 -> $1.803  CAGR 25.7%  maxDD -4.4%  Calmar 5.86
+        #   risk 1%        -> $2.892  CAGR 37.1%  maxDD -4.4%  Calmar 8.43
+        #   risk 2%        -> $16.842 CAGR 89.9%  maxDD -8.3%  Calmar 10.81  <- dipilih
+        #   risk 3%        -> $39.220 CAGR 122%   maxDD -12.1% Calmar 10.12
+        #
+        # ⚠ ANGKA DI ATAS ADALAH ARAH, BUKAN RAMALAN. Itu proyeksi compounding dari
+        # strategi ber-DSR 0.629 (belum lolos ambang 0.95); compounding melipatgandakan
+        # edge DAN kesalahan estimasi. Model juga menganggap lot besar terisi sempurna,
+        # padahal slippage tumbuh seiring ukuran. Karena itu lot_maks dijaga rendah.
+        #
+        # TIDAK ADA plafon yang MELEWATI trade - diuji dan merusak (plafon 3% di H4
+        # membuang 26 dari 99 trade, Calmar 2.23 -> 0.24). Kalau lot minimum sudah
+        # melewati target risiko, trade tetap DIAMBIL di 0.01.
+        risk_pct: 0.02
+        lot_maks: 0.05       # plafon konservatif; naikkan hanya kalau saldo DAN bukti
+                             #   statistiknya sudah tumbuh, bukan salah satunya saja.
+        contract_size: 100   # XAUUSD: 0.01 lot = $1 per $1 gerak
         max_setups_per_day: 2
         manager_poll_seconds: 30
         dry_run: false
@@ -816,7 +838,10 @@ advisor:
   #   1. verdict tercatat SEBELUM fill -> bisa dinilai apakah ia memprediksi hasil
   #   2. order yang KEDALUWARSA tanpa terisi ikut dapat label (16 dari 31 pending di
   #      jendela uji paritas) -> dataset berlabel jadi DUA KALI LIPAT
-  watch_pending: []             # KOSONG sejak 2026-08-13, dan ini disengaja.
+  watch_pending: [920643]       # smc_xau H4 (mode limit -> punya pending).
+                                # 920644 TIDAK di sini: mode m5_confirm tidak
+                                # memasang pending, dia dipicu lewat POSISI.
+  # Catatan lama (masih berlaku untuk 920644):
                                 #   Pemicu ini menyala saat PENDING LIMIT terpasang. Sejak
                                 #   smc_xau_h1 pindah ke entry_mode "m5_confirm" dia tidak
                                 #   memasang pending sama sekali (langsung MARKET setelah
@@ -845,7 +870,8 @@ advisor:
   # eterna dan slot arsip (920622/920624/920625/920626/920643) juga dikeluarkan.
   # Menambah lagi: cukup tulis barisnya di sini, tidak ada perubahan kode.
   watch:
-    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1
+    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1 (dipicu POSISI)
+    - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau H4 (dipicu ZONA)
 
 
 # MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-

@@ -86,6 +86,23 @@ class SmcLimitManager:
         # Batas setup per hari (permintaan user 2026-08-13). Dihitung per hari UTC dan
         # menghitung ORDER YANG DIPASANG, bukan yang terisi - "maksimal 2 kali set".
         self.max_per_day = int(p.get("max_setups_per_day", 2))
+        # --- RISIKO SESUAI BALANCE (permintaan user 2026-08-14) ---
+        # lot = (balance x risk_pct) / (jarak_SL x contract), dijepit ke [min, lot_maks]
+        # dan dibulatkan ke bawah ke kelipatan volume broker.
+        #
+        # Diukur di research/smc_sizing.py (equity di-compound dari $523):
+        #   H1-C  lot tetap 0.01 -> Calmar 5.86 | risk 2% -> Calmar 10.81
+        #   H4-B  lot tetap 0.01 -> Calmar 2.23 | risk 2% -> Calmar 1.68 (LEBIH BURUK,
+        #         karena SL-nya jauh lebih lebar: median $9.80 vs $6.02, maks $101 vs $41)
+        # Karena itu risk_pct diatur PER SLOT, bukan global.
+        #
+        # TIDAK ADA plafon yang MELEWATI trade: diuji dan merusak. Plafon 3% di H4-B
+        # membuang 26 dari 99 trade dan memangkas Calmar 2.23 -> 0.24. Kalau lot minimum
+        # sudah melewati target risiko, trade tetap DIAMBIL di lot minimum - melewatkan
+        # trade besar jauh lebih mahal daripada sesekali over-risk pada lot terkecil.
+        self.risk_pct = float(p.get("risk_pct", 0.0))     # 0 = pakai lot tetap
+        self.lot_maks = float(p.get("lot_maks", 0.05))
+        self.contract = float(p.get("contract_size", 100.0))
         self.data = DataProvider(cfg)
         from .smc_rr import RrAgent
         self.rr_agent = RrAgent(cfg)
@@ -328,18 +345,49 @@ class SmcLimitManager:
 
     def _kirim_market(self, mt5, arah: int, sl: float, tp: float) -> bool:
         info = mt5.symbol_info(self.mt5_symbol)
+        tick0 = mt5.symbol_info_tick(self.mt5_symbol)
+        px0 = (tick0.ask if arah == 1 else tick0.bid) if tick0 else 0.0
+        lot = self._hitung_lot(mt5, px0, sl) if px0 else self.lot
         filling = (mt5.ORDER_FILLING_IOC if info and (info.filling_mode & 2)
                    else mt5.ORDER_FILLING_FOK)
         tick = mt5.symbol_info_tick(self.mt5_symbol)
         harga = tick.ask if arah == 1 else tick.bid
         req = {"action": mt5.TRADE_ACTION_DEAL, "symbol": self.mt5_symbol,
-               "volume": self.lot,
+               "volume": lot,
                "type": mt5.ORDER_TYPE_BUY if arah == 1 else mt5.ORDER_TYPE_SELL,
                "price": harga, "sl": round(sl, 2), "tp": round(tp, 2),
                "deviation": 20, "magic": self.magic,
                "type_time": mt5.ORDER_TIME_GTC, "type_filling": filling,
                "comment": "smc_m5"}
         return self._send(mt5, req, f"MARKET {'BUY' if arah == 1 else 'SELL'} (konfirmasi M5)")
+
+    def _hitung_lot(self, mt5, price: float, sl: float) -> float:
+        """Lot dari risiko sesuai balance. Kembalikan lot tetap kalau risk_pct = 0."""
+        if self.risk_pct <= 0:
+            return self.lot
+        try:
+            jarak = abs(price - sl)
+            if jarak <= 0:
+                return self.lot
+            ai = mt5.account_info(); info = mt5.symbol_info(self.mt5_symbol)
+            if ai is None or info is None:
+                return self.lot
+            target = ai.balance * self.risk_pct
+            mentah = target / (jarak * self.contract)
+            step = float(getattr(info, "volume_step", 0.01)) or 0.01
+            vmin = float(getattr(info, "volume_min", 0.01)) or 0.01
+            vmax = min(self.lot_maks, float(getattr(info, "volume_max", 100.0)))
+            lot = np.floor(mentah / step) * step
+            lot = max(vmin, min(vmax, lot))
+            lot = round(lot, 2)
+            risiko = jarak * self.contract * lot
+            logger.info(f"[smcmgr] {self.magic} sizing: balance ${ai.balance:.2f} x "
+                        f"{self.risk_pct:.1%} = ${target:.2f} target | SL ${jarak:.2f} "
+                        f"-> lot {lot} (risiko ${risiko:.2f} = {100*risiko/ai.balance:.1f}%)")
+            return lot
+        except Exception:
+            logger.exception("[smcmgr] gagal menghitung lot, pakai lot tetap")
+            return self.lot
 
     def _trade_hari_ini(self, mt5) -> int:
         """Jumlah TRADE hari ini untuk magic ini, dibaca dari riwayat deal MT5.
@@ -399,6 +447,7 @@ class SmcLimitManager:
         return " ".join(f"{k}={req[k]}" for k in keys if k in req)
 
     def _place(self, mt5, otype, price, sl, tp, expiry_utc: pd.Timestamp) -> bool:
+        lot = self._hitung_lot(mt5, price, sl)
         # MT5 `expiration` memakai WAKTU SERVER BROKER (FBS UTC+3), bukan UTC.
         # Pakai detektor offset yang SAMA dengan DataProvider supaya tidak ada
         # sumber kebenaran kedua yang bisa menyimpang saat DST berganti.
@@ -410,7 +459,7 @@ class SmcLimitManager:
         # Ini tidak terlihat di liquidity_manager karena dia memakai ORDER_TIME_GTC.
         exp_epoch = int(expiry_utc.timestamp()) + off * 3600
         req = {"action": mt5.TRADE_ACTION_PENDING, "symbol": self.mt5_symbol,
-               "volume": self.lot, "type": otype,
+               "volume": lot, "type": otype,
                "price": round(price, 2), "sl": round(sl, 2), "tp": round(tp, 2),
                "magic": self.magic, "type_time": mt5.ORDER_TIME_SPECIFIED,
                "expiration": exp_epoch, "comment": "smc_ob"}
