@@ -616,18 +616,26 @@ live:
         # SL H4 jauh lebih lebar (median $9.80, p90 $36.57, maks $101.11) sehingga
         # lot besar datang tepat saat risikonya paling tidak menentu.
         risk_pct: 0.0        # 0 = pakai `lot` di atas apa adanya
-        sl_maks_usd: 50.0    # 2026-08-14 permintaan user: kunci H4 di $50.
-                             #   Diukur (210 zona, rr2): tanpa batas $922.15 PF 2.22
-                             #   maxDD -9.4% | batas $50 -> $383.39 PF 1.55 maxDD -13.6%,
-                             #   10 zona dilewati. Memangkas 58% profit H4.
-                             #   CATATAN: $50 kebetulan lebih buruk dari $40 ($544.81)
-                             #   MAUPUN $60 ($490.52). Non-monotonik begitu berarti
-                             #   selisih antar batas di rentang ini adalah NOISE - dengan
-                             #   hanya 10 zona dilewati, membuang satu pemenang besar
-                             #   sudah menggeser hasilnya. Yang nyata cuma polanya:
-                             #   makin ketat, makin banyak hilang. Jangan menyetel angka
-                             #   ini mencari yang "terbaik" - itu memilih noise.
-                             #   Pembanding: governor $90 memangkas 22% ($718.44).
+        sl_maks_usd: 40.0    # 2026-08-14. Sempat $50, diubah ke $40 - dan ALASANNYA
+                             #   yang penting, bukan angkanya:
+                             #
+                             #   Sebaran lebar SL H4: median $9.80, p90 $36.57, maks $101.11.
+                             #   $40 duduk kira-kira di PERSENTIL 90 = "buang desil terlebar".
+                             #   Itu titik potong yang punya alasan struktural. $50 tidak -
+                             #   dia mengambang antara p90 dan maksimum tanpa dasar.
+                             #
+                             #   JANGAN memilih angka ini dari tabel hasil. Hasilnya
+                             #   non-monotonik ($40 -> $544.81, $50 -> $383.39, $60 -> $490.52),
+                             #   dan dengan cuma 10-15 zona dilewati, satu pemenang besar
+                             #   sudah menggeser segalanya. Selisih antar batas di rentang
+                             #   ini adalah NOISE.
+                             #   Justru KARENA hasilnya noise, pilih berdasarkan dimensi yang
+                             #   BUKAN noise: risikonya. Batas lebih ketat menang.
+                             #
+                             #   Diukur (210 zona, rr2): tanpa batas $922.15 PF 2.22 maxDD
+                             #   -9.4% | $40 -> $544.81 PF 2.03 maxDD -9.4%, 15 zona
+                             #   dilewati. Membatasi TETAP memangkas hasil (~41%); itu efek
+                             #   nyata dan monotonik. Yang noise adalah selisih antar level.
                              # (batas $20 diuji lebih dulu dan jauh lebih merusak:
                              #  net $922 -> $130, PF 2.22 -> 1.30, 39 dari 210 zona
                              #  dibuang. Zona H4 struktural lebih lebar: p90 $36.57,
