@@ -791,16 +791,25 @@ advisor:
                                 #   sempat menulis JSON, dan fallback ke angka mesin.
                                 #   Biaya TIDAK naik karena plafon dinaikkan - yang dibayar
                                 #   token yang benar-benar dipakai.
-  web_search: true              # 2026-08-13 INTI PERMINTAAN USER "data ke LLM lebih valid":
-                                #   pakai tool web_search sisi-server Anthropic supaya model
-                                #   MEMBACA SENDIRI kalender ekonomi + berita emas saat itu
-                                #   juga, bukan menebak dari konteks basi.
-                                #   Chrome extension SENGAJA TIDAK dipakai di sini: di VPS
-                                #   tanpa ditunggui dia butuh sesi Chrome hidup dan berhenti
-                                #   DIAM-DIAM kalau RDP putus / Chrome mati. Untuk sumber
-                                #   publik, web_search memberi validitas yang sama tanpa
-                                #   bagian bergerak di lokal. Pakai extension nanti kalau
-                                #   butuh sumber yang perlu login.
+  web_search: false             # 2026-08-13 DIMATIKAN untuk hemat token, dan alasannya
+                                #   DUPLIKASI YANG TERUKUR - bukan penghematan buta:
+                                #   panggilan ber-web_search memakai 71.916 token input,
+                                #   padahal gambar chart cuma ~3.200 dan prompt ~1.500.
+                                #   Sisanya ~67.000 token (93% biaya) adalah hasil pencarian.
+                                #
+                                #   Untuk SMC pencarian itu MUBAZIR: agent RR (blok smc_rr
+                                #   di bawah) sudah membaca kalender + berita emas tepat
+                                #   SEBELUM order dikirim, dan hasilnya tercatat di
+                                #   smc_rr_journal.jsonl untuk trade yang SAMA. Advisor
+                                #   menyala beberapa detik kemudian dan akan mencari berita
+                                #   yang sama persis lagi.
+                                #
+                                #   Jadi advisor kini murni pembaca CHART (verdict
+                                #   CONFIRM/CAUTION di samping hasil trade). Konteks
+                                #   beritanya TIDAK hilang - ada di jurnal agent RR.
+                                #   Nyalakan lagi HANYA kalau advisor dipakai untuk magic
+                                #   yang tidak lewat agent RR.
+  max_search_uses: 2            # dipakai hanya kalau web_search dinyalakan lagi
   # Magic yang diberi verdict saat ZONA TER-ARM (pending LIMIT dipasang), bukan saat terisi.
   # Ini permintaan user: "test itu per ada alert zona yang masuk dengan teori SMC".
   # Dua keuntungan nyata dibanding pemicu per-posisi:
@@ -822,20 +831,22 @@ advisor:
                                 #   berguna, karena hasil bacaannya masih bisa mengubah
                                 #   SL/TP/time-exit. Advisor cuma mengulangnya SETELAH posisi
                                 #   terbuka, dengan biaya sama tapi tanpa bisa bertindak.
-  timeframes: ["H4", "H1", "M15"]   # H4 = macro bias, H1 = structure, M15 = entry context
+  timeframes: ["H1", "M5"]      # 2026-08-13 disamakan dengan timeframe sleeve-nya:
+                                #   H1 = tempat zona OB dihitung, M5 = tempat konfirmasi
+                                #   entry terjadi. H4 dibuang karena aliran H4 sudah mati.
+                                #   Tiap gambar ~1.600 token.
   prompt_file: "pipeline/vision/prompt_advisor.md"
   journal_path: "advisor_journal.jsonl"
   archive_dir: "_DOC/advisor"
   # which live magics to watch -> canonical symbol + its TradingView feed for capture
+  # 2026-08-13 DIPERSEMPIT ke SMC saja atas permintaan user (hemat token).
+  # ORB dikeluarkan justru karena dia yang PALING SERING trade (~1 tiap hari kerja)
+  # sementara nilai anotasinya paling kecil - dia sudah punya time-exit sendiri.
+  # eterna dan slot arsip (920622/920624/920625/920626/920643) juga dikeluarkan.
+  # Menambah lagi: cukup tulis barisnya di sini, tidak ada perubahan kode.
   watch:
-    - {magic: 920622, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau (1H)
-    - {magic: 920624, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # zrev_xau_4h
-    - {magic: 920617, symbol: NAS100, tv_symbol: "OANDA:NAS100USD"}   # orb30_nas
-    - {magic: 920625, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # liquidity_limit_strategy (retired)
-    - {magic: 920626, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # golden_xau (Golden Strategy 1)
-    - {magic: 920643, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau H4 (dipicu ZONA, lihat watch_pending)
-    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1 (dipicu POSISI)
-    - {magic: 920627, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # eterna_xau — ditambah 2026-08-13
+    - {magic: 920644, symbol: XAUUSD, tv_symbol: "OANDA:XAUUSD"}      # smc_xau_h1
+
 
 # MONTHLY PROFIT GOVERNOR (pipeline/live/monthly_governor.py) â€” the 'bersyukur' rule. Once month-to-
 # date realized PnL for the book reaches threshold x the month's forecast target, PAUSE new entries

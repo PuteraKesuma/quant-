@@ -73,7 +73,8 @@ def _parse(raw: str) -> dict:
 
 
 def annotate(images, symbol, direction, entry_price, *, client, system, model,
-             max_tokens, task_text: str | None = None, web_search: bool = False) -> dict:
+             max_tokens, task_text: str | None = None, web_search: bool = False,
+             max_search_uses: int = 2) -> dict:
     """Send chart image(s) + entry context to Claude; return a verdict dict.
 
     `task_text` overrides the default "position already opened" framing — used by the
@@ -107,7 +108,7 @@ def annotate(images, symbol, direction, entry_price, *, client, system, model,
         if web_search:
             # max_uses bounds the cost; the model still decides whether to search.
             kw["tools"] = [{"type": "web_search_20260209", "name": "web_search",
-                            "max_uses": 4}]
+                            "max_uses": max_search_uses}]
 
         messages = [{"role": "user", "content": content}]
         resp = client.messages.create(model=model, max_tokens=max_tokens,
@@ -159,6 +160,7 @@ class ShadowAdvisor:
         #     di jendela uji) -> dataset berlabelnya dua kali lipat
         self.watch_pending = {int(m) for m in a.get("watch_pending", [])}
         self.web_search = bool(a.get("web_search", False))
+        self.max_search_uses = int(a.get("max_search_uses", 2))
         self.seen: set[int] = set()
         self.seen_pending: set[int] = set()
         self.seeded = False
@@ -203,7 +205,8 @@ class ShadowAdvisor:
         v = annotate(images, w["symbol"], direction, pos.price_open,
                      client=self._get_client(), system=self.system,
                      model=self.model, max_tokens=self.max_tokens,
-                     web_search=self.web_search)
+                     web_search=self.web_search,
+                     max_search_uses=self.max_search_uses)
         row = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "ticket": int(pos.ticket),
@@ -253,7 +256,8 @@ class ShadowAdvisor:
         v = annotate(images, w["symbol"], arah, float(o.price_open),
                      client=self._get_client(), system=self.system,
                      model=self.model, max_tokens=self.max_tokens,
-                     task_text=tugas, web_search=self.web_search)
+                     task_text=tugas, web_search=self.web_search,
+                     max_search_uses=self.max_search_uses)
         row = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": "zone_armed",               # bedakan dari baris entry biasa

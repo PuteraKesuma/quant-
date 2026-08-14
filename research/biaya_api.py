@@ -23,14 +23,18 @@ IN_PER_M, OUT_PER_M = 3.00, 15.00
 CARI_PER_1000 = 10.00          # web_search: $10 per 1.000 pencarian
 
 # Frekuensi PASTI dari backtest (research: hitung zona ter-arm, bukan yang terisi)
-ZONA_PER_TAHUN = 119           # H4-B 38 + H1-C 81
-ORB_TRADE_PER_TAHUN = 120      # perkiraan; advisor dipicu per POSISI untuk 920617
+# 2026-08-13: H4 dimatikan, advisor dipersempit ke SMC saja, web_search advisor OFF.
+# Yang memicu panggilan sekarang HANYA entry SMC H1-C (setelah konfirmasi M5).
+ENTRY_SMC_PER_TAHUN = 39       # 215 trade / 5.48 tahun (versi konfirmasi M5)
+ORB_TRADE_PER_TAHUN = 0        # ORB dikeluarkan dari advisor.watch
 
-# Tebakan token per panggilan (bagian yang paling tidak pasti)
+# Token per panggilan. `rr` sekarang ANGKA TERUKUR dari panggilan nyata 2026-08-13
+# (in 71.916 / out 5.237 / 3 pencarian), bukan tebakan lagi. `advisor` masih tebakan
+# tapi jauh lebih kecil karena web_search-nya dimatikan - tinggal 2 gambar + prompt.
 TEBAK = {
-    "rr":      {"in": 19_700, "out": 1_000, "cari": 3},   # 2 chart + web_search
-    "advisor": {"in": 21_300, "out":   700, "cari": 3},   # 3 chart + web_search
-    "orb":     {"in":  6_300, "out":   700, "cari": 0},   # 3 chart, TANPA web_search
+    "rr":      {"in": 71_916, "out": 5_237, "cari": 3},   # TERUKUR, dgn web_search
+    "advisor": {"in":  4_700, "out":   700, "cari": 0},   # 2 chart, TANPA web_search
+    "orb":     {"in":  4_700, "out":   700, "cari": 0},
 }
 
 
@@ -44,10 +48,12 @@ def perkiraan() -> None:
     print("A. PERKIRAAN (frekuensi PASTI, token masih tebakan)")
     print("=" * 78)
     per_zona = biaya(TEBAK["rr"]) + biaya(TEBAK["advisor"])
-    thn_zona = per_zona * ZONA_PER_TAHUN
+    thn_zona = per_zona * ENTRY_SMC_PER_TAHUN
     thn_orb = biaya(TEBAK["orb"]) * ORB_TRADE_PER_TAHUN
-    print(f"  per zona ter-arm (agent RR + advisor) : ${per_zona:.3f}")
-    print(f"  {ZONA_PER_TAHUN} zona/tahun                        : ${thn_zona:.2f}/tahun")
+    print(f"  agent RR  (web_search)               : ${biaya(TEBAK['rr']):.3f}")
+    print(f"  advisor   (chart saja)               : ${biaya(TEBAK['advisor']):.3f}")
+    print(f"  per entry SMC (keduanya)             : ${per_zona:.3f}")
+    print(f"  {ENTRY_SMC_PER_TAHUN} entry SMC/tahun                     : ${thn_zona:.2f}/tahun")
     print(f"  advisor ORB {ORB_TRADE_PER_TAHUN} posisi/tahun          : ${thn_orb:.2f}/tahun")
     print(f"  {'TOTAL':<38}: ${thn_zona + thn_orb:.2f}/tahun  "
           f"(${(thn_zona + thn_orb)/12:.2f}/bulan)")
@@ -79,8 +85,8 @@ def nyata() -> None:
     b_rata = biaya(rata)
     print(f"  rata-rata per panggilan: in {rata['in']:,.0f}  out {rata['out']:,.0f}  "
           f"cari {rata['cari']:.1f}  -> ${b_rata:.3f}")
-    print(f"  proyeksi {ZONA_PER_TAHUN} zona/tahun x 2 panggilan: "
-          f"${b_rata * ZONA_PER_TAHUN * 2:.2f}/tahun")
+    print(f"  proyeksi {ENTRY_SMC_PER_TAHUN} entry/tahun: "
+          f"${b_rata * ENTRY_SMC_PER_TAHUN:.2f}/tahun")
 
 
 if __name__ == "__main__":
