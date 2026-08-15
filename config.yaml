@@ -105,7 +105,17 @@ live:
   # UTC so the session windows (13:30 UTC NY etc.) line up with the research.
   # FBS = UTC+3 in summer (DST), UTC+2 in winter. null = auto-detect from a fresh
   # tick; set an integer to force it. Server warns if the live offset differs.
-  mt5_server_utc_offset_hours: null
+  mt5_server_utc_offset_hours: 3   # DIPATOK 2026-08-15, bukan lagi auto-detect (null).
+                             #   Offset broker adalah sifat BROKER, bukan sifat momen -
+                             #   dia hanya berubah dua kali setahun saat DST. Mendeteksinya
+                             #   tiap poll berarti membuka peluang salah tiap poll, dan itu
+                             #   sudah terjadi: 4 kali salah jadi +2h (Jul-Agu), lalu -2h di
+                             #   akhir pekan karena tick Jumat basi hampir tepat 2 jam bulat.
+                             #   Salah 1 jam menggeser jendela sesi ORB, bar H1 eterna, dan
+                             #   zona SMC - tanpa satu pun tanda.
+                             #   Kode TETAP mendeteksi sebagai PEMERIKSA SILANG dan menulis
+                             #   WARNING kalau berbeda dari angka ini.
+                             #   >> TINJAU AKHIR OKTOBER 2026: FBS pindah ke UTC+2. <<
   poll_seconds: 1            # EA poll cadence (used to judge EA "connected" in heartbeat)
   heartbeat_seconds: 15      # server logs a heartbeat line at this cadence
   # Each entry is one independent strategy "slot". Multiple slots (even on the

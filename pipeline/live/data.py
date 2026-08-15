@@ -5,6 +5,7 @@ EA), mirroring the normalisation in `pipeline/fetch/mt5_fetcher.py`: UTC index,
 columns open/high/low/close/volume. The `orb` signal needs only today's bars up
 to and including the opening range, so a few hundred bars is plenty.
 """
+from pathlib import Path
 import pandas as pd
 from loguru import logger
 
@@ -33,9 +34,18 @@ class DataProvider:
         mt5 = self._ensure_mt5()
         mt5_symbol = self.cfg["symbols"][symbol]["mt5_symbol"]
 
+        # symbol_info() sesekali mengembalikan None walau simbolnya ada - terpantau 32x
+        # pada 2026-08-14, membuat /signals balas 500 dan xau_executor tidak bisa
+        # mengambil sinyal eterna sama sekali selama jendela itu. Penyebab paling umum:
+        # simbol belum/keluar dari Market Watch, atau terminal sedang menyambung ulang.
+        # Coba pilih simbolnya dulu sebelum menyerah - jangan langsung melempar.
         info = mt5.symbol_info(mt5_symbol)
         if info is None:
-            raise ValueError(f"Symbol '{mt5_symbol}' not found in MT5.")
+            mt5.symbol_select(mt5_symbol, True)
+            info = mt5.symbol_info(mt5_symbol)
+            if info is None:
+                raise ValueError(f"Symbol '{mt5_symbol}' not found in MT5.")
+            logger.warning(f"[{symbol}] symbol_info None -> pulih setelah symbol_select")
         if not info.visible:
             mt5.symbol_select(mt5_symbol, True)
 
@@ -87,17 +97,39 @@ class DataProvider:
         # ---------------------------------------------------------------------
         TOLERANSI_JAM = 0.08          # ~5 menit; tick segar jauh di bawah ini
 
+        # PENDEKATAN LAMA GAGAL SECARA PRINSIP (2026-08-15). Uji sisa pembulatan
+        # tidak bisa membedakan tick SEGAR dari tick yang basi persis N jam bulat.
+        # Terbukti di akhir pekan: tick terakhir Jumat sore basi ~1.92 jam -> sisa
+        # 0.08 -> LOLOS -> offset terdeteksi -2h padahal broker +3h. Menambal ambang
+        # tidak menyelesaikannya; masalahnya ada di sinyal yang dipakai.
+        #
+        # Yang dipakai sekarang: bandingkan tick dengan BAR M1 TERAKHIR. Bar hanya
+        # terbentuk saat pasar buka, jadi selisih tick-vs-bar kecil = pasar hidup =
+        # tick benar-benar segar. Kalau pasar tutup, deteksi DITOLAK seluruhnya dan
+        # nilai tersimpan yang dipakai.
         detected = None
         tick = mt5.symbol_info_tick(mt5_symbol)
-        if tick and tick.time:
-            server_now = pd.Timestamp(tick.time, unit="s", tz="UTC")
-            diff = (server_now - pd.Timestamp.now("UTC")).total_seconds() / 3600.0
-            nearest = round(diff)
-            if abs(diff - nearest) <= TOLERANSI_JAM and -12 <= nearest <= 14:
-                detected = int(nearest)
+        bars = mt5.copy_rates_from_pos(mt5_symbol, mt5.TIMEFRAME_M1, 0, 1)
+        if tick and tick.time and bars is not None and len(bars):
+            jarak_bar = abs(int(tick.time) - int(bars[-1]["time"])) / 60.0   # menit
+            # Bar M1 terakhir HARUS dekat dengan waktu nyata, diukur memakai offset
+            # yang DIPATOK di config. Ini yang membedakan pasar hidup dari feed mati:
+            # di akhir pekan tick DAN bar sama-sama basi dari Jumat, jadi jaraknya
+            # satu sama lain tetap kecil - membandingkan keduanya saja tidak cukup.
+            umur_bar_menit = 1e9
+            if configured is not None:
+                bar_utc = pd.Timestamp(int(bars[-1]["time"]), unit="s", tz="UTC")                           - pd.Timedelta(hours=int(configured))
+                umur_bar_menit = (pd.Timestamp.now("UTC") - bar_utc).total_seconds() / 60.0
+            pasar_hidup = jarak_bar <= 5.0 and umur_bar_menit <= 10.0
+            if pasar_hidup:
+                server_now = pd.Timestamp(tick.time, unit="s", tz="UTC")
+                diff = (server_now - pd.Timestamp.now("UTC")).total_seconds() / 3600.0
+                nearest = round(diff)
+                if abs(diff - nearest) <= TOLERANSI_JAM and -12 <= nearest <= 14:
+                    detected = int(nearest)
             else:
-                logger.debug(f"offset diabaikan: tick basi (diff {diff:+.3f}h, "
-                             f"sisa {abs(diff - nearest):.3f}h > {TOLERANSI_JAM})")
+                logger.debug(f"offset: pasar tampak TUTUP (bar M1 terakhir "
+                             f"{umur_bar_menit:.0f} menit lalu) -> deteksi ditolak")
 
         if configured is not None:
             if detected is not None and detected != configured:
@@ -107,7 +139,24 @@ class DataProvider:
                 )
             offset = int(configured)
         elif detected is None:
-            offset = self._offset_hours or 0   # tick tidak dipercaya -> pertahankan
+            # Tick tidak dipercaya. JANGAN jatuh ke 0 - itu bug yang dibuat 2026-08-14:
+            # pada proses yang BARU start (mis. dihidupkan watchdog di akhir pekan saat
+            # semua tick basi), self._offset_hours masih None sehingga `or 0` memberi
+            # offset 0 dan SELURUH bar bergeser 3 jam. Jendela sesi ORB, bar H1 eterna,
+            # dan zona SMC semuanya jadi salah tanpa satu pun tanda.
+            # Urutan cadangan: nilai di memori -> nilai terakhir yang tersimpan di disk.
+            if self._offset_hours is not None:
+                offset = self._offset_hours
+            else:
+                simpan = self._baca_offset_tersimpan()
+                if simpan is not None:
+                    logger.warning(f"tick basi & belum ada offset di memori -> pakai "
+                                   f"nilai tersimpan {simpan:+d}h")
+                    offset = simpan
+                else:
+                    logger.error("tick basi DAN tidak ada offset tersimpan -> memakai 0. "
+                                 "SEMUA bar akan bergeser sampai tick segar tiba.")
+                    offset = 0
         elif self._offset_hours is None:
             offset = detected                  # deteksi pertama: langsung dipakai
         elif detected == self._offset_hours:
@@ -129,4 +178,26 @@ class DataProvider:
         if offset != self._offset_hours:
             logger.info(f"MT5 server->UTC offset = {offset:+d}h")
             self._offset_hours = offset
+        # Simpan hanya offset yang datang dari tick SEGAR, supaya file tidak pernah
+        # berisi nilai hasil tebakan.
+        if detected is not None and detected == offset:
+            self._tulis_offset(offset)
         return offset
+
+    _OFFSET_FILE = Path(r"C:\Quant\_MONITOR\mt5_offset.txt")
+
+    @classmethod
+    def _baca_offset_tersimpan(cls):
+        try:
+            return int(cls._OFFSET_FILE.read_text(encoding="utf-8").strip())
+        except Exception:
+            return None
+
+    @classmethod
+    def _tulis_offset(cls, off: int) -> None:
+        try:
+            cls._OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
+            if cls._baca_offset_tersimpan() != off:
+                cls._OFFSET_FILE.write_text(str(int(off)), encoding="utf-8")
+        except Exception:
+            pass
