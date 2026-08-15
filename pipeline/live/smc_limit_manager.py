@@ -133,6 +133,15 @@ class SmcLimitManager:
         # TP $100 dengan SL $20 menuntut harga bergerak 5x lebih jauh ke arah kita,
         # dan itu terlalu jarang. rr 2 yang benar.
         self.sl_maks_usd = float(p.get("sl_maks_usd", 0.0))   # 0 = tanpa batas
+        # --- JATAH HARIAN BERSAMA lintas simbol (2026-08-15) ---
+        # Sejak SMC jalan di banyak simbol, `max_setups_per_day` per slot TIDAK CUKUP:
+        # 5 simbol x 2 = 10 trade/hari, padahal user minta 1-2. Jatah bersama ini
+        # menghitung deal dari SELURUH magic SMC, bukan cuma magic sendiri.
+        # Diisi oleh main() setelah semua slot dibaca; kalau kosong, perilakunya
+        # persis seperti sebelumnya (hanya magic sendiri) supaya tidak ada perubahan
+        # diam-diam saat cuma satu slot yang aktif.
+        self.magics_bersama: set[int] = set()
+        self.budget_harian = 0            # 0 = mati
         self.data = DataProvider(cfg)
         from .smc_rr import RrAgent
         self.rr_agent = RrAgent(cfg)
@@ -452,12 +461,20 @@ class SmcLimitManager:
             deals = mt5.history_deals_get(a, b)
             if deals is None:
                 return -1
+            # Jatah BERSAMA kalau aktif: hitung seluruh magic SMC, bukan cuma sendiri.
+            # Tanpa ini, tiap simbol punya jatah sendiri dan totalnya membengkak.
+            dihitung = self.magics_bersama or {self.magic}
             # entry=0 (DEAL_ENTRY_IN) = pembukaan posisi; itulah satu "trade"
             return sum(1 for d in deals
-                       if d.magic == self.magic and d.entry == 0)
+                       if d.magic in dihitung and d.entry == 0)
         except Exception:
             logger.exception("[smcmgr] gagal membaca riwayat deal (pakai state)")
             return -1
+
+    @property
+    def batas_efektif(self) -> int:
+        """Batas trade/hari yang berlaku: jatah bersama kalau aktif, kalau tidak per-slot."""
+        return self.budget_harian if self.budget_harian > 0 else self.max_per_day
 
     def _bar_selesai(self):
         df = self.data.recent_bars(self.symbol, self.history_bars)
@@ -565,9 +582,9 @@ class SmcLimitManager:
             nyata = self._trade_hari_ini(mt5)
             jumlah = nyata if nyata >= 0 else (
                 int(st.get("jumlah", 0)) if st.get("hari") == hari else 0)
-            if jumlah >= self.max_per_day:
+            if jumlah >= self.batas_efektif:
                 if st.get("alasan_terakhir") != "batas harian":
-                    logger.info(f"[smcmgr] {self.magic} batas {self.max_per_day} "
+                    logger.info(f"[smcmgr] {self.magic} batas {self.batas_efektif} "
                                 f"trade/hari tercapai ({jumlah}) -> zona dilewati")
                     self._tulis_state({**st, "alasan_terakhir": "batas harian",
                                        "hari": hari, "jumlah": jumlah})
@@ -598,7 +615,7 @@ class SmcLimitManager:
                                    "sl": rr["sl"], "tp": rr["tp"],
                                    "sumber_rr": rr.get("sumber"),
                                    "hari": hari, "jumlah": jumlah + 1})
-                logger.info(f"[smcmgr] {self.magic} setup ke-{jumlah + 1}/{self.max_per_day} "
+                logger.info(f"[smcmgr] {self.magic} setup ke-{jumlah + 1}/{self.batas_efektif} "
                             f"hari ini, RR dari {rr.get('sumber')}")
             return
 
@@ -639,8 +656,8 @@ class SmcLimitManager:
         nyata = self._trade_hari_ini(mt5)
         jumlah = nyata if nyata >= 0 else (
             int(st.get("jumlah", 0)) if st.get("hari") == hari else 0)
-        if jumlah >= self.max_per_day:
-            logger.info(f"[smcmgr] batas {self.max_per_day} setup/hari sudah tercapai "
+        if jumlah >= self.batas_efektif:
+            logger.info(f"[smcmgr] batas {self.batas_efektif} setup/hari sudah tercapai "
                         f"({jumlah} hari ini) -> zona {bos_key} DILEWATI")
             self._tulis_state({**st, "bos": bos_key, "terkirim": True,
                                "hari": hari, "jumlah": jumlah,
@@ -674,7 +691,7 @@ class SmcLimitManager:
                                "sumber_rr": rr.get("sumber"),
                                "expiry_utc": exp_pakai.isoformat(),
                                "hari": hari, "jumlah": jumlah + 1})
-            logger.info(f"[smcmgr] setup ke-{jumlah + 1}/{self.max_per_day} hari ini "
+            logger.info(f"[smcmgr] setup ke-{jumlah + 1}/{self.batas_efektif} hari ini "
                         f"({hari}), RR dari {rr.get('sumber')}")
 
     def deskripsi(self) -> str:
@@ -718,7 +735,27 @@ def main() -> None:
     magics = [s["magic"] for s in specs]
     if len(set(magics)) != len(magics):
         logger.error(f"[smcmgr] magic BENTROK di slot smclimit: {magics}. Keluar."); return
-    run_semua([SmcLimitManager(cfg, s) for s in specs])
+    managers = [SmcLimitManager(cfg, s) for s in specs]
+
+    # --- JATAH HARIAN BERSAMA lintas seluruh slot SMC ---
+    # Tanpa ini, tiap simbol memakai jatahnya sendiri: 5 simbol x 2 = 10 trade/hari,
+    # padahal user minta 1-2. Angkanya dibaca dari config supaya bisa diubah tanpa kode.
+    # Sengaja hanya AKTIF kalau slotnya lebih dari satu ATAU config menyebutnya
+    # eksplisit - supaya konfigurasi lama satu-simbol berperilaku persis seperti dulu.
+    b = (cfg.get("smc_budget") or {})
+    budget = int(b.get("max_trades_per_day", 0) or 0)
+    if budget > 0:
+        semua_magic = set(magics)
+        for m in managers:
+            m.magics_bersama = semua_magic
+            m.budget_harian = budget
+        logger.info(f"[smcmgr] JATAH BERSAMA {budget} trade/hari untuk {len(magics)} "
+                    f"slot: {sorted(semua_magic)}")
+    elif len(managers) > 1:
+        logger.warning(f"[smcmgr] {len(managers)} slot aktif TANPA smc_budget - tiap slot "
+                       f"punya jatah sendiri, total bisa {sum(m.max_per_day for m in managers)} "
+                       f"trade/hari. Set smc_budget.max_trades_per_day di config.")
+    run_semua(managers)
 
 
 if __name__ == "__main__":

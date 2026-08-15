@@ -803,6 +803,90 @@ live:
         manager_poll_seconds: 30
         dry_run: false
 
+    # =================================================================================
+    # SMC MULTI-SIMBOL — 2026-08-15. Aturan H1-C IDENTIK dengan smc_xau_h1, hanya
+    # pasarnya yang ditambah. TIDAK ADA parameter yang disetel per simbol; itu inti
+    # keabsahannya.
+    #
+    # KENAPA INI SAH SECARA STATISTIK, sementara melonggarkan filter TIDAK:
+    #   1 aturan tetap x 5 pasar = 1 trial dengan 5 sampel  -> MEMPERKUAT bukti
+    #   5 parameter x 1 pasar    = 5 trial                   -> MELEMAHKAN (penalti DSR)
+    # Melonggarkan aturan sudah diuji 3x (timeframe, MTF H4-bias, likuiditas sesi) dan
+    # SELALU rugi. Menambah pasar adalah satu-satunya jalan yang tidak menukar edge
+    # dengan frekuensi.
+    #
+    # HASIL research/smc_multi_simbol.py (biaya spread+swap diambil dari MT5, bukan tebakan):
+    #   simbol    n  /hari      net$    PF  WR%  maxDD%  thn hijau
+    #   XAUUSD  215  0.151  +1290.35  2.67   68    -4.4       6/6
+    #   EURUSD  303  0.212   +303.78  2.42   66    -2.7       6/6
+    #   GBPUSD  310  0.217   +150.66  1.36   59    -5.8       5/6
+    #   AUDUSD  166  0.183     -1.41  0.99   56    -6.8       2/4
+    #   NZDUSD  158  0.174    -67.06  0.60   49   -14.8       1/4
+    #   GABUNG 1152  0.806  +1676.32  1.97   61    -4.7       6/6
+    #
+    # ⚠ AUDUSD dan NZDUSD SENGAJA TETAP DIPASANG meski merugi di backtest.
+    #   Membuangnya SETELAH melihat hasilnya adalah cherry-picking - persis kesalahan
+    #   yang seluruh sistem ini dibangun untuk menghindarinya. Angka GABUNGAN (PF 1.97)
+    #   SUDAH memasukkan bebannya, dan itulah angka jujur yang harus dipakai menilai
+    #   forward test. Keduanya juga cuma punya 4 tahun data, bukan 6.
+    #   TINJAU setelah >=40 trade forward, dengan kriteria yang ditetapkan DI DEPAN:
+    #   buang hanya kalau PF forward < 1.0 DAN jumlah trade-nya >= 20.
+    #
+    # Frekuensi: 0.07 -> 0.81 trade/hari. Masih di bawah target user 1-2/hari, tapi
+    # 11x lebih dekat TANPA menyentuh satu pun aturan.
+    # =================================================================================
+    - name: smc_eur_h1
+      enabled: true
+      type: smclimit
+      symbol: EURUSD
+      lot: 0.01
+      magic: 920645
+      params: &smc_fx_h1          # jangkar: keempat slot FX memakai parameter IDENTIK
+        timeframe: 1h
+        swing_k: 3
+        ob_lookback: 10
+        expiry_bars: 12
+        rr: 2.0
+        buffer_frac: 0.10
+        use_fvg: false
+        use_sweep: true
+        sweep_window: 5
+        entry_mode: m5_confirm
+        konfirm_bars_m5: 12
+        konfirm_max_umur_bar: 2
+        history_bars: 30000
+        sl_maks_usd: 20.0
+        risk_pct: 0.02
+        lot_maks: 0.05
+        contract_size: 100000     # FX: 0.01 lot = $1000 per 1.0 gerak harga (bukan 100!)
+        max_setups_per_day: 2     # dibatasi lagi oleh smc_budget di bawah
+        manager_poll_seconds: 30
+        dry_run: false
+
+    - name: smc_gbp_h1
+      enabled: true
+      type: smclimit
+      symbol: GBPUSD
+      lot: 0.01
+      magic: 920646
+      params: *smc_fx_h1
+
+    - name: smc_aud_h1
+      enabled: true
+      type: smclimit
+      symbol: AUDUSD
+      lot: 0.01
+      magic: 920647
+      params: *smc_fx_h1
+
+    - name: smc_nzd_h1
+      enabled: true
+      type: smclimit
+      symbol: NZDUSD
+      lot: 0.01
+      magic: 920648
+      params: *smc_fx_h1
+
     # vision_smc_xau: RETIRED 2026-07-01. LLM-as-decision-maker (entry gate via confidence)
     # is UNVERIFIABLE by construction (no reproducible historical signal series -> can't be
     # backtested), and in practice it just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
@@ -811,6 +895,23 @@ live:
     # entry and logs a CONFIRM/CAUTION verdict ALONGSIDE the outcome, blocking nothing. After
     # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
     # let it filter. Honest forward-test, zero risk to the validated edge.
+
+# =====================================================================================
+# JATAH HARIAN BERSAMA seluruh slot SMC — 2026-08-15.
+#
+# WAJIB ADA sejak SMC jalan di banyak simbol. `max_setups_per_day` bersifat PER SLOT,
+# jadi 5 simbol x 2 = 10 trade/hari - lima kali lipat dari yang user minta.
+# Jatah ini menghitung deal dari SELURUH magic SMC digabung (smc_limit_manager.main()
+# menyuntikkan daftar magic-nya, dan _trade_hari_ini menghitung lintas magic itu).
+#
+# Angkanya 2 karena user berulang kali menyebut "1 hari maksimal 2 trade".
+# Backtest gabungan rata-rata 0.81 trade/hari, jadi plafon ini jarang mengikat -
+# dia pengaman terhadap hari yang ramai (5 hari dalam 1430 punya 5 kandidat, 1 punya 6).
+#
+# Kalau di-set 0 atau dihapus, tiap slot kembali memakai jatahnya sendiri DAN
+# smc_limit_manager akan MEMPERINGATKAN di log kalau slot aktif lebih dari satu.
+smc_budget:
+  max_trades_per_day: 2
 
 # =====================================================================================
 # AGENT RR untuk sleeve SMC (pipeline/live/smc_rr.py) — 2026-08-13, permintaan user:

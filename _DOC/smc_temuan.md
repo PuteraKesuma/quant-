@@ -188,3 +188,90 @@ memperLEMAH bukti lewat penalti DSR.
 
 Status: ditunda user ke minggu setelah 2026-08-15. Jangan ubah sleeve yang sedang
 forward test tanpa persetujuan.
+
+---
+
+## Multi-simbol: jalan keluar yang SAH dari jurang frekuensi (2026-08-15)
+
+Aturan H1-C yang **identik** — OB + BOS + liquidity sweep, konfirmasi M5 12 bar, rr 2.0,
+sl_maks $20 — dijalankan di lima pasar. **Tidak satu pun parameter disetel per simbol.**
+
+| simbol | n | /hari | net$ | PF | WR | maxDD | tahun hijau |
+|---|---|---|---|---|---|---|---|
+| XAUUSD | 215 | 0,151 | +1.290,35 | 2,67 | 68% | -4,4% | 6/6 |
+| EURUSD | 303 | 0,212 | +303,78 | 2,42 | 66% | -2,7% | 6/6 |
+| GBPUSD | 310 | 0,217 | +150,66 | 1,36 | 59% | -5,8% | 5/6 |
+| AUDUSD | 166 | 0,183 | -1,41 | 0,99 | 56% | -6,8% | 2/4 |
+| NZDUSD | 158 | 0,174 | -67,06 | 0,60 | 49% | -14,8% | 1/4 |
+| **GABUNGAN** | **1.152** | **0,806** | **+1.676,32** | **1,97** | 61% | **-4,7%** | **6/6** |
+
+Frekuensi **0,07 -> 0,81 trade/hari** tanpa menyentuh satu pun aturan. Biaya spread dan
+swap diambil langsung dari MT5 per simbol, bukan ditebak.
+
+**Kenapa ini sah sementara melonggarkan filter tidak:**
+1 aturan tetap x 5 pasar = **1 trial dengan 5 sampel** -> memperKUAT bukti.
+5 parameter x 1 pasar = 5 trial -> memperLEMAH lewat penalti DSR.
+Dan hasilnya konsisten: 3 dari 5 pasar untung, XAU/EUR keduanya 6/6 tahun hijau. Itu
+tanda edge-nya **struktural**, bukan kebetulan cocok dengan emas.
+
+### AUDUSD & NZDUSD sengaja TETAP dipasang meski rugi
+
+Membuangnya setelah melihat hasilnya adalah **cherry-picking** - persis kesalahan yang
+seluruh sistem ini dibangun untuk menghindari. Angka GABUNGAN sudah memikul bebannya,
+dan itulah angka jujur untuk menilai forward test.
+**Kriteria buang ditetapkan DI DEPAN:** hanya kalau PF forward < 1,0 DAN trade >= 20.
+
+### Jatah harian bersama - wajib ada
+
+`max_setups_per_day` bersifat PER SLOT, jadi 6 slot = 12 trade/hari, enam kali lipat
+dari yang diminta user. `smc_budget.max_trades_per_day: 2` menghitung deal dari SELURUH
+magic SMC digabung. Diuji dengan deal sintetis: trade di simbol mana pun memakan jatah
+bersama, dan deal sleeve lain (eterna 920627) tidak ikut terhitung.
+
+---
+
+## LLM di SMC: apa yang benar-benar terjadi, dan kenapa TIDAK boleh jadi gerbang
+
+**Agent RR terbukti JALAN** (diuji ujung-ke-ujung 2026-08-15, setelah kredit diisi):
+tangkap 3 chart TradingView (H4/H1/M5) 23 detik, panggilan penuh 66 detik, web_search 2x,
+verdict TAKE, **confidence 58**, 46.366 token masuk / 3.573 keluar = **$0,21 per panggilan**.
+Catatan "0 dari 4" sebelumnya adalah era kredit habis, bukan cacat kode.
+
+Dia mengembalikan `null` untuk sl/tp/expiry - artinya "angka mesin sudah benar". Itu
+perilaku yang BENAR, bukan kegagalan.
+
+### Kenapa confidence TIDAK dijadikan gerbang
+
+Sistem ini **sudah pernah mencobanya dan gagal**. Dari komentar `vision_smc_xau` di
+config.yaml (RETIRED 2026-07-01):
+
+> LLM-as-decision-maker (entry gate via confidence) is UNVERIFIABLE by construction
+> (no reproducible historical signal series -> can't be backtested), and in practice it
+> just sat FLAT (conf 30-40 < gate 65) -> ~zero trades.
+
+Dan uji hari ini mengembalikan **confidence 58** - di bawah gerbang 65 yang dulu dipakai.
+Memasang gerbang sekarang akan mengulang persis kegagalan yang sama, di sleeve yang
+frekuensinya memang sudah langka.
+
+**Yang benar** (rencana yang sudah tertulis di config itu sendiri): catat confidence dan
+verdict BERSAMA HASILNYA, jangan blokir apa pun. Setelah 30-40 setup terkumpul, ukur
+apakah confidence rendah benar-benar memprediksi trade rugi. Kalau ya, ambangnya
+ditentukan DARI DATA. Kalau tidak, lapisnya dibuang dan hemat biayanya.
+
+Biaya kalau 2 setup/hari: ~$155/tahun. Itu nyata terhadap buku yang labanya puluhan
+dolar per bulan, jadi lapis ini harus MEMBUKTIKAN dirinya, bukan diasumsikan berguna.
+
+### Yang riset luar katakan tentang SMC
+
+Pencarian web (Agustus 2026): klaim komunitas berkisar WR 50-65% dengan konfluensi ketat,
+dan satu backtest 2.600 trade mengklaim WR 61,2% / PF 2,17 - tapi **tanpa metodologi,
+tanpa rincian per aset, tanpa model biaya**, jadi tidak bisa diverifikasi.
+Sisi akademis lebih jujur: yang punya dukungan penelitian adalah **fenomenanya**
+(ketidakseimbangan order book, penggerombolan stop-loss), **bukan aturan dagangnya**.
+Satu tinjauan menyimpulkan tidak ada dari 34 sumber terverifikasi yang mengesahkan
+SMC/ICT sebagai sistem trading, dan bahwa keberhasilan SMC lebih karena ia memaksa
+SL ketat + target jauh - keberhasilan MANAJEMEN RISIKO, bukan daya ramal.
+
+Artinya: angka kita sendiri (PF 1,97 gabungan, biaya nyata dimodelkan, paritas diuji)
+justru lebih ketat daripada yang dipublikasikan orang. Jangan tergoda meniru klaim
+WR 60%+ dari internet.
