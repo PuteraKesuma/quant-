@@ -133,3 +133,58 @@ tanpa penyebut risiko:
 
 Yang mencegah ketiganya jadi kesimpulan final adalah menjalankan ujinya, bukan
 berhenti di intuisi pertama.
+
+---
+
+## Jurang frekuensi — diukur 2026-08-15
+
+User berulang kali minta **1-2 trade/hari**. Ini angka yang sebenarnya dihasilkan
+konfigurasi live, direplay dengan kelas produksi (`SmcLimitManager`) di data nyata:
+
+| aliran | jendela | BOS | limit dipasang | terisi | trade/hari |
+|---|---|---|---|---|---|
+| `smc_xau` H4 (920643) | 60 hari | 14 | 4 | 0 | **0,00** |
+| `smc_xau_h1` (920644) | 30 hari | 32 | 4 | 2 | **0,07** |
+
+Meleset **20-30 kali lipat** dari yang diminta. Penyumbatnya bukan bug:
+
+- filter *liquidity sweep* menolak **28 dari 32** BOS di H1
+- filter FVG menolak **8 dari 14** BOS di H4
+
+**Konsekuensi operasional: hari tanpa trade adalah keadaan NORMAL, bukan gejala
+kerusakan.** Sebelum mencari bug ketika "kok gaada trade", replay dulu tabel BOS-nya
+— itu membedakan "aturannya menolak" dari "sistemnya rusak". Dua kali sudah waktu
+terbuang mencari bug yang tidak ada karena langkah ini dilewati.
+
+### Contoh terverifikasi, 13-14 Agustus
+
+Empat sleeve, empat alasan berbeda, semuanya benar:
+
+| tanggal | sleeve | yang terjadi |
+|---|---|---|
+| 13 Agu 06:18 | SMC-H1 | SELLLIM 4412,90 sl 4453,20 tp 4332,29 dipasang. Tidak tersentuh, batal saat expiry |
+| 13 Agu 14:00 | ORB | terisi, ditutup di akhir sesi **+$1,40** |
+| 13 Agu 04:00 | ETERNA | flip SELL, tren H1 naik -> ditolak gate konservatif |
+| 14 Agu | SMC-H4 | **nol BOS** - harga tidak menembus swing manapun |
+| 14 Agu | SMC-H1 | 3 BOS, ketiganya ditolak filter sweep |
+| 14 Agu 09:00 | ETERNA | flip BUY, tren H1 turun -> ditolak gate konservatif |
+| 14 Agu 14:00 | ORB | pending dibatalkan - tembusan pertama melawan tren |
+
+Order SMC-H1 itu sekaligus **bukti offset +3 sudah benar** pada tanggal tersebut:
+harga limitnya cocok persis dengan replay yang dihitung memakai +3. Kalau offset
+jatuh ke 0, angkanya pasti meleset. Log tidak bisa membuktikan ini (terhapus saat
+restart) - ordernya yang membuktikan.
+
+### Jalan keluar yang SAH
+
+Melonggarkan filter sudah diuji **tiga kali** dan selalu rugi (longgarkan
+timeframe/filter, MTF H4-bias+H1-entry, likuiditas sesi). Selektivitas itulah
+edge-nya - menukarnya dengan frekuensi berarti membuang edge-nya.
+
+Satu-satunya jalan yang tidak merusak statistik: **aturan yang SAMA PERSIS di
+beberapa simbol** (`research/smc_multi_simbol.py`). Itu tetap 1 trial dengan lebih
+banyak sampel, jadi memperKUAT bukti - bukan N parameter di 1 pasar, yang
+memperLEMAH bukti lewat penalti DSR.
+
+Status: ditunda user ke minggu setelah 2026-08-15. Jangan ubah sleeve yang sedang
+forward test tanpa persetujuan.
