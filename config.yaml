@@ -174,12 +174,25 @@ live:
         pending_stop: true        # marks this slot for the standalone STOP manager (main() picks it up)
         manager_poll_seconds: 10  # poll cadence (place the stop promptly at range_end; manage BE/exit)
         dry_run: true             # 2026-08-15 ORB DIMATIKAN atas permintaan user.
-                                  #   ALASAN (research/andai_juni_juli.py): di Juni-Juli 2026 ORB rugi
-                                  #   -$205,17 dari 27 trade, WR 22% - satu-satunya sleeve yang merugi
-                                  #   di jendela itu, sementara ETERNA +$292 dan SMC ~0.
-                                  #   Model ORB-nya sudah divalidasi ke kenyataan 11-14 Agu (4 hari,
-                                  #   4 cocok, termasuk arah + jam masuk 13 Agu); selisih $0,88
-                                  #   menunjukkan model TERLALU OPTIMIS -> ORB nyata lebih buruk lagi.
+                                  #
+                                  #   ⚠ BACA INI SEBELUM MEMAKAI ANGKA DI BAWAH SEBAGAI ALASAN.
+                                  #   Pemicunya: research/andai_juni_juli.py -> ORB -$205,17 dari
+                                  #   27 trade (WR 22%) di Juni-Juli 2026. TAPI angka itu kusodorkan
+                                  #   TANPA penyebut. research/orb_jangka_panjang.py mengukurnya:
+                                  #     689 trade 2021-2026, net +$466, PF 1,22, 6/6 TAHUN HIJAU,
+                                  #     ekspektasi +0,105R/trade, dan 33% bulan MEMANG merah.
+                                  #     Juni 2026 = bulan terburuk dari 64 bulan. Dari 63 jendela
+                                  #     2-bulanan, NOL yang lebih buruk dari -$205.
+                                  #   Jadi ORB rugi karena edge-nya TIPIS, bukan karena rusak. Dari
+                                  #   tiga sleeve, bukti statistik ORB justru PALING KUAT (bandingkan
+                                  #   SMC DSR 0,629 dan ETERNA DSR 0,0061).
+                                  #   User tetap memilih mati setelah bukti ini disampaikan - itu
+                                  #   keputusannya, tapi JANGAN mengutip -$205 seolah ORB terbukti
+                                  #   buruk. Dia tidak terbukti buruk; dia sedang di jendela buruk.
+                                  #
+                                  #   Model ORB-nya divalidasi ke kenyataan 11-14 Agu (4 hari, 4 cocok,
+                                  #   termasuk arah + jam masuk 13 Agu); selisih $0,88 menunjukkan
+                                  #   model sedikit TERLALU OPTIMIS.
                                   #
                                   #   PAKAI dry_run, BUKAN enabled:false. Manager memilih slot lewat
                                   #   type=="orb" + params.pending_stop dan TIDAK membaca `enabled`
