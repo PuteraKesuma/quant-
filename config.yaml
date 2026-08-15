@@ -173,7 +173,29 @@ live:
         # --- orb_stop_manager: REAL pending STOP at the range boundary (via MT5, EA untouched) ---
         pending_stop: true        # marks this slot for the standalone STOP manager (main() picks it up)
         manager_poll_seconds: 10  # poll cadence (place the stop promptly at range_end; manage BE/exit)
-        dry_run: false            # 2026-07-04 LIVE on demo: places REAL pending STOP orders. (true = log-only.)
+        dry_run: true             # 2026-08-15 ORB DIMATIKAN atas permintaan user.
+                                  #   ALASAN (research/andai_juni_juli.py): di Juni-Juli 2026 ORB rugi
+                                  #   -$205,17 dari 27 trade, WR 22% - satu-satunya sleeve yang merugi
+                                  #   di jendela itu, sementara ETERNA +$292 dan SMC ~0.
+                                  #   Model ORB-nya sudah divalidasi ke kenyataan 11-14 Agu (4 hari,
+                                  #   4 cocok, termasuk arah + jam masuk 13 Agu); selisih $0,88
+                                  #   menunjukkan model TERLALU OPTIMIS -> ORB nyata lebih buruk lagi.
+                                  #
+                                  #   PAKAI dry_run, BUKAN enabled:false. Manager memilih slot lewat
+                                  #   type=="orb" + params.pending_stop dan TIDAK membaca `enabled`
+                                  #   (lihat komentar panjang di atas) - jadi enabled:false TIDAK
+                                  #   menghentikan apa pun. dry_run:true membuat manager tetap
+                                  #   menghitung dan MENCATAT tiap place/cancel/close tanpa
+                                  #   mengirimnya ke broker. Itu disengaja: kita punya catatan
+                                  #   bayangan untuk menilai ORB tanpa mempertaruhkan uang.
+                                  #   Hidupkan lagi = false + restart orb_stop_manager.
+                                  #
+                                  #   AKIBAT PADA PORTOFOLIO yang harus disadari: ORB bobot risiko
+                                  #   terbesar kedua. Tanpa dia, buku bersandar hampir sepenuhnya
+                                  #   pada ETERNA - sleeve dengan bukti statistik PALING LEMAH
+                                  #   (DSR 0,0061) dan laba paling terkonsentrasi (1 trade = 86%
+                                  #   laba Juni-Juli). Konsentrasi naik, bukan turun.
+                                  # 2026-07-04 LIVE on demo: places REAL pending STOP orders.
 
     - name: liquidity_limit_strategy   # Liquidity Limit â€” Supertrend band 'limit' entries (BOTH sides)
       enabled: false        # RETIRED 2026-07-08: weakest edge (PF 1.33, 2022 negative) and the main

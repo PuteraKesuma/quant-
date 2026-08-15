@@ -1805,3 +1805,5 @@ CATATAN: PF 3 wajib waspada -> live selalu lebih jelek; pantau lot 0.01.
 - **2026-08-15 02:47:50 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-15 03:18:08 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
 - **2026-08-15 03:48:28 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-15 04:18:36 UTC** HB  [wd] Sehat. slots=eterna_xau,smc_xau,smc_xau_h1. MT5 UP. xauexec UP. orbmgr UP.
+- **2026-08-15 04:43:11 UTC** ERR [wd] orb_stop_manager MATI - sleeve ORB (43% bobot) tidak jalan. Menghidupkan ulang...
