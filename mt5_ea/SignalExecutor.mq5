@@ -18,8 +18,8 @@
 
 //--- inputs
 input string ServerURL       = "http://127.0.0.1:8000"; // signal server (must be whitelisted)
-input string ServerSymbol    = "NAS100";                // research key sent to the server (/signals?symbol=)
-input string TradeSymbol     = "US100";                 // BROKER symbol used to place orders (FBS: US100)
+input string ServerSymbolIn  = "";                       // research key sent to server (/signals?symbol=). Empty = auto (this chart's symbol)
+input string TradeSymbolIn   = "";                       // BROKER symbol used to place orders. Empty = auto (this chart's symbol)
 input int    PollSeconds     = 1;                        // polling cadence
 input int    Slippage        = 20;                       // max deviation in points
 input double MaxLot          = 1.0;                     // safety clamp per order
@@ -33,6 +33,8 @@ input string BreakevenMagics  = "920621";               // CSV of magics BE appl
 CTrade   trade;
 long     g_magics[];      // per-slot: magic ...
 string   g_last_ids[];    // ... and the last signal_id already acted on
+string   ServerSymbol;    // resolved once in OnInit() from ServerSymbolIn (auto = chart's own symbol)
+string   TradeSymbol;     // resolved once in OnInit() from TradeSymbolIn  (auto = chart's own symbol)
 
 //--- heartbeat status (for the panel + log)
 bool     g_connected = false;
@@ -45,6 +47,15 @@ string   g_summary   = "-";     // e.g. "orb30_nas:FLAT"
 //+------------------------------------------------------------------+
 int OnInit()
   {
+   // Auto-detect: an EA instance is always attached to a specific chart, and
+   // _Symbol is that chart's own symbol -- so leaving ServerSymbolIn/TradeSymbolIn
+   // blank (the new default) means "just use whatever symbol this chart is showing",
+   // no manual Inputs-tab edit needed for the common case where the research key and
+   // the broker symbol are the same string (true for XAUUSD, USDJPY on this broker;
+   // NOT true for NAS100->US100, which still needs both typed in explicitly).
+   ServerSymbol = (ServerSymbolIn == "") ? _Symbol : ServerSymbolIn;
+   TradeSymbol  = (TradeSymbolIn  == "") ? _Symbol : TradeSymbolIn;
+
    trade.SetDeviationInPoints(Slippage);
 
    char   post[], res[];

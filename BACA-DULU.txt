@@ -1,0 +1,68 @@
+CADANGAN SISTEM TRADING — dibuat 2026-08-07
+============================================
+
+ISI
+---
+Seluruh sistem dari C:\Quant, KECUALI folder data\ (999 MB DuckDB historis 2021-2026).
+Data itu sengaja tidak diikutkan supaya ZIP ini cukup kecil untuk ditransfer, dan
+karena bisa ditarik ulang kapan saja dari Dukascopy — lihat research/eterna_2026_report.py
+(fungsi load_merged) untuk contoh menariknya.
+
+GIT-RIWAYAT-LENGKAP.bundle
+  Berisi SELURUH riwayat git: semua commit, semua branch, sampai commit terakhir
+  b78b2f8 (watchdog shadow). Sudah diverifikasi "records a complete history".
+  Pulihkan jadi repo utuh dengan:
+
+      git clone GIT-RIWAYAT-LENGKAP.bundle quant
+
+  Ini penting: kalau cuma extract ZIP, kamu dapat FILE-nya tapi kehilangan RIWAYAT
+  (alasan tiap keputusan, hasil tiap riset, apa yang sudah ditolak dan kenapa).
+
+
+CARA REDEPLOY DI VPS BARU
+-------------------------
+1. Extract ZIP ini ke  C:\Quant
+   Path ini WAJIB persis — di-hardcode di watchdog, semua .bat, dan pipeline/live/signal.py
+2. Install Python 3.11 ke C:\Program Files\Python311
+   (path ini juga di-hardcode di file .bat)
+3. pip install -r requirements.txt
+4. Install MetaTrader 5, login FBS-Demo
+5. MT5: Tools > Options > Expert Advisors > centang WebRequest, tambahkan
+      http://127.0.0.1:8000
+6. Copy mt5_ea/SignalExecutor.mq5 ke folder MQL5\Experts di data dir MT5,
+   attach ke chart XAUUSD, nyalakan Algo Trading (Ctrl+E)
+7. Jalankan watchdog:
+      powershell -ExecutionPolicy Bypass -File C:\Quant\_MONITOR\watchdog_shadow.ps1
+
+
+KEADAAN SAAT CADANGAN INI DIBUAT
+--------------------------------
+- Slot aktif   : eterna_xau saja (magic 920627), mode SHADOW
+- EA           : BELUM di-attach ke chart -> brain menghitung, tak ada yang eksekusi
+- Strategi lama: SEMUA dimatikan (zrev/orb/liqlimit/golden/reversal)
+- Akun         : FBS-Demo 106271896, saldo $561
+
+Konfigurasi eterna yang tervalidasi:
+  H1 | ATR 16 (= lookback SL struktur) | entry x1.8 | gate tren x3.8 | KONSERVATIF
+     | TP 1:4 | semua jam | tanpa martingale/trailing/breakeven
+  Modal $1000 lot 0.01: net $2700, PF 1.57, maxDD -14,1%, Ret/DD 3.45, 6/6 tahun hijau
+
+YANG WAJIB DIINGAT sebelum menjalankan dengan uang nyata:
+  * 10 trade terbaik (1,7%) = 85% seluruh profit. Trade MEDIAN RUGI $4,67. WR 37%.
+    Melewatkan 5 trade terbaik menghapus 58% profit -> slot HARUS dibiarkan jalan.
+  * ~47% bulan merah, pernah 5 bulan merah beruntun. TIDAK ada bulan hijau terus.
+  * 91% profit backtest dari 2024-2026 (emas trending). Di regime datar 2021-2023
+    peluang rugi 33,6% -> dia BERTAHAN HIDUP, bukan menghasilkan.
+  * JANGAN pernah mengoptimasi ulang parameternya. Walk-forward membuktikan menyetel
+    ulang tiap tahun memangkas hasil dari $2991 jadi $1967.
+
+
+!!! PERINGATAN KEAMANAN !!!
+---------------------------
+File .env di dalam ZIP ini berisi ANTHROPIC_API_KEY ASLI.
+
+JANGAN unggah ZIP ini ke GitHub, Google Drive publik, grup WhatsApp/Telegram, atau
+layanan berbagi file apa pun. Simpan HANYA di komputer pribadimu.
+
+Kalau ZIP ini pernah terkirim ke tempat yang tidak kamu kendalikan, segera cabut dan
+buat ulang API key-nya di console.anthropic.com.

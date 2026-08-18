@@ -20,6 +20,7 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 anthropic>=0.39.0
 mplfinance>=0.12.10b0
+smartmoneyconcepts>=0.0.27   # pipeline/live/smc_rules.py -- rule-based SMC candidate gate (smc_xau slot)
 playwright>=1.44.0     # vision capture_mode=tradingview (real TV charts). After install run:
                        #   python -m playwright install chromium
                        # On Windows also needs the MS VC++ 2015-2022 x64 redist (vcruntime140_1.dll)

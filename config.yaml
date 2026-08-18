@@ -354,6 +354,13 @@ live:
     #   melebar saat volatilitas naik dan 0.01 adalah lot minimum, jadi satu-satunya
     #   kendali di akun kecil adalah MELEWATI trade itu -> governor.max_risk_per_trade.
     # =================================================================================
+    # 2026-08-18: dummy_test (XAUUSD, magic 999900) + dummy_test_jpy (USDJPY, magic 999901)
+    # ran here briefly to verify brain->EA->execution after the EA auto-detect fix + reattach.
+    # Both confirmed: real orders placed and auto-closed on the FLAT->BUY->FLAT->SELL cycle
+    # (XAUUSD tickets 1972310221/1972315470, USDJPY ticket 1972315500, all opened then closed
+    # cleanly within their 1-minute phase). Removed after confirmation -- see git history/
+    # jurnal.md for the full log if this needs re-running after a future EA change.
+
     - name: eterna_xau
       enabled: true         # 2026-08-07 SHADOW: shadow-check lolos (feed FBS vs Dukascopy
                             #   sepakat 99,7%, korelasi 0.999973, offset server +3h benar).
@@ -383,6 +390,157 @@ live:
     # entry and logs a CONFIRM/CAUTION verdict ALONGSIDE the outcome, blocking nothing. After
     # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
     # let it filter. Honest forward-test, zero risk to the validated edge.
+
+    - name: smc_xau          # 2026-08-17 NEW ATTEMPT, fixes vision_smc_xau's core flaw:
+      enabled: true           #   a RULE-BASED gate (pipeline/live/smc_rules.py, smartmoneyconcepts
+                              #   package) decides WHEN to even ask Claude -- sweep -> CHoCH ->
+                              #   unmitigated OB/FVG must mechanically fire first (see
+                              #   pipeline/vision/prompt_smc_mtf_v2.md for the exact 3-part pattern).
+                              #   That "when do we ask" decision is a pure function of OHLC, so it
+                              #   IS backtestable/replayable, unlike the old timer-polled version.
+                              #   Claude only ever confirms/vetoes a setup a rule-based SMC scan
+                              #   already flagged -- never invents one from a blank chart on a timer.
+                              #
+                              #   FREQUENCY/EDGE TUNING (2026-08-18, walk-forward, 6.5mo XAUUSD M5):
+                              #   First pass used sweep_lookback=10 bars and found almost nothing
+                              #   (1-3 trades/6.5mo) -- WRONG: a CHoCH's causally-related liquidity
+                              #   sweep is typically 20-90 bars before it (confirmation lag stacks
+                              #   with real displacement time), so a 10-bar window silently discarded
+                              #   most genuine setups. Corrected to sweep_lookback=60/ob_fvg_lookback=30
+                              #   (pipeline/live/smc_rules.py) after checking 10/20/30/50/80/100/150/200
+                              #   -- win rate holds (66-80%) through ~100 bars then decays (150->56%,
+                              #   200->45% as the matched "sweep" stops being causally related). Then
+                              #   Swept rule_swing_length in {4,5,6,8} with a walk-forward split (first
+                              #   half vs second half): all positive/consistent but only ~0.24 trades/day
+                              #   AGGREGATE across all 4 smc_* symbols -- user pushed back ("opportunity
+                              #   ada tiap hari", wants 3-4x/week keeping just these 4 symbols, not more
+                              #   pairs). Checked rule_bias_timeframe Y-vs-N at every swing value: bias
+                              #   NEVER excluded a single candidate in this whole window -- it wasn't the
+                              #   constraint. swing_length WAS: re-swept down to {2,3} and found swing=2
+                              #   across all 4 symbols -> 3.82 trades/week aggregate (hits the ask), still
+                              #   positive in BOTH halves for every symbol (XAUUSD weakest: WR66.7%
+                              #   avgR+0.38, 2nd-half only +0.09 but not negative). This is the most
+                              #   sensitive value tested -- near the frontier, not deep safety margin.
+                              #   Enable only after observing rule-candidate frequency + a few Claude
+                              #   verdicts in shadow (no EA attached) look sane.
+      type: vision
+      symbol: XAUUSD
+      lot: 0.01
+      magic: 920640           # NEW (outside 920617-920633 range in use elsewhere in this file)
+      params:
+        rule_gate: true
+        rule_timeframe: "M5"        # entry-trigger TF for the mechanical sweep/CHoCH/OB scan
+        rule_swing_length: 2        # 2026-08-18 re-tuned for frequency: swing2 all 4 symbols -> 3.82 trades/week
+                                     #   AGGREGATE (user's ask: "3-4x seminggu"), XAUUSD alone n=21/196d
+                                     #   WR66.7% avgR+0.38 (1st-half +0.70/n10, 2nd-half +0.09/n11 -- still
+                                     #   positive but the weakest pair at this setting). This is the most
+                                     #   sensitive value tested (2,3,4,5,6,8) -- near the frontier, not deep
+                                     #   in a safety margin. rule_bias_timeframe checked Y vs N across every
+                                     #   swing value: IDENTICAL results every time (H1 bias never actually
+                                     #   excluded a candidate in this whole 6.5mo window) -- kept anyway since
+                                     #   it's free and may matter in a differently-trending period; it is NOT
+                                     #   what was limiting frequency.
+        rule_bias_timeframe: "H1"   # "market confidence" cross-check -- empty string = off
+        rule_bias_swing_length: 10
+        rule_history_bars: 20000    # M1 bars pulled -> resampled to rule_timeframe/rule_bias_timeframe
+        max_trades_per_day: 2       # safety ceiling; real A+ setups run ~0.75/week on this one symbol at swing2
+        interval_minutes: 5         # cheap rule-check cadence; Claude itself only called on a NEW candidate
+        min_confidence: 65          # matches prompt_smc_mtf_v2.md's own confidence guard
+        min_rr: 2.0                 # matches prompt_smc_mtf_v2.md's own R:R >= 2 requirement
+        model: "claude-sonnet-4-6"
+        max_tokens: 1024
+        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
+        capture_mode: "mt5"         # mplfinance-rendered charts (no browser dependency for v1)
+        timeframes: ["H4", "M15", "M5"]   # macro bias -> entry trigger, highest to lowest (Claude's own read)
+        chart_bars: 200
+
+    # 2026-08-18: same smc_xau architecture, extended to majors -- walk-forward tested
+    # per pair (6.5mo M5, first-half/second-half split, sweep_lookback=60/ob_fvg_lookback=30
+    # after the XAUUSD window-size fix -- see smc_xau's comment above for that story).
+    # rule_swing_length=2 for all 4 symbols (2026-08-18 re-tune, see smc_xau's comment) --
+    # 3.82 trades/week aggregate, positive both walk-forward halves for every symbol.
+    - name: smc_eurusd
+      enabled: false          # DISABLED 2026-08-18 by user choice: weaker than smc_usdjpy
+                              #   (WR67.6% avgR+0.72 vs USDJPY's WR84.0% avgR+1.18). Params/tuning
+                              #   kept here (reversible: set true) rather than deleted, matching
+                              #   how every other retired slot in this file is handled.
+      type: vision
+      symbol: EURUSD
+      lot: 0.01
+      magic: 920641
+      params:
+        rule_gate: true
+        rule_timeframe: "M5"
+        rule_swing_length: 2        # 2026-08-18: n=34/196d WR67.6% avgR+0.72, both halves positive (+0.93/+0.51) -- most active pair
+        rule_bias_timeframe: "H1"
+        rule_bias_swing_length: 10
+        rule_history_bars: 20000
+        max_trades_per_day: 2
+        interval_minutes: 5
+        min_confidence: 65
+        min_rr: 2.0
+        model: "claude-sonnet-4-6"
+        max_tokens: 1024
+        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
+        capture_mode: "mt5"
+        timeframes: ["H4", "M15", "M5"]
+        chart_bars: 200
+
+    - name: smc_gbpusd
+      enabled: false          # DISABLED 2026-08-18 by user choice: weakest of the four pairs
+                              #   (WR59.3% avgR+0.59, weakens further in 2nd half +0.93->+0.28).
+                              #   Params/tuning kept here (reversible: set true), not deleted.
+      type: vision
+      symbol: GBPUSD
+      lot: 0.01
+      magic: 920642
+      params:
+        rule_gate: true
+        rule_timeframe: "M5"
+        rule_swing_length: 2        # 2026-08-18: n=27/196d WR59.3% avgR+0.59, both halves positive (+0.93/+0.28) -- weakest WR of the four but still solid
+        rule_bias_timeframe: "H1"
+        rule_bias_swing_length: 10
+        rule_history_bars: 20000
+        max_trades_per_day: 2
+        interval_minutes: 5
+        min_confidence: 65
+        min_rr: 2.0
+        model: "claude-sonnet-4-6"
+        max_tokens: 1024
+        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
+        capture_mode: "mt5"
+        timeframes: ["H4", "M15", "M5"]
+        chart_bars: 200
+
+    - name: smc_usdjpy
+      enabled: true
+      type: vision
+      symbol: USDJPY
+      lot: 0.01
+      magic: 920643
+      params:
+        rule_gate: true
+        rule_timeframe: "M5"
+        rule_swing_length: 1        # 2026-08-18 re-tune for frequency: n=42/196d (1.50/wk) WR83.3% avgR+0.84,
+                                     #   both halves positive (+1.00/+0.69). Also checked M1 swing1/2/3 (0.68-1.50/wk,
+                                     #   WR76-90%) -- M5 swing1 has the best quality of everything tested for this
+                                     #   pair (highest avgR, strengthens 2nd half) at near-equal frequency, so kept
+                                     #   M5. NOTE: a first M1 check on a 48-day slice showed 3-4x/wk, but the full
+                                     #   196-day window came back at 0.89-1.50/wk -- that short window was an
+                                     #   outlier, not the real rate; don't re-trust a <2mo sample for this pair again.
+        rule_bias_timeframe: "H1"
+        rule_bias_swing_length: 10
+        rule_history_bars: 20000
+        max_trades_per_day: 2
+        interval_minutes: 5
+        min_confidence: 65
+        min_rr: 2.0
+        model: "claude-sonnet-4-6"
+        max_tokens: 1024
+        prompt_file: "pipeline/vision/prompt_smc_mtf_v2.md"
+        capture_mode: "mt5"
+        timeframes: ["H4", "M15", "M5"]
+        chart_bars: 200
 
 # AI-vision audit trail (used by pipeline/vision/journal.py)
 vision:

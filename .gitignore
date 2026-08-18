@@ -30,6 +30,9 @@ Thumbs.db
 .claude/
 vision_journal.jsonl
 _DOC/vision/
+_MONITOR/health_log.jsonl
+_MONITOR/jurnal.md
+_MONITOR/eterna_shadow.jsonl
 
 # artefak backup / binary tool (2026-08-06)
 vps-zrev-live.bundle

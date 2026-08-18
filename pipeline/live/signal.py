@@ -410,6 +410,26 @@ class VisionStrategy(BaseStrategy):
         self.analyzer = VisionAnalyzer(spec, cfg)
         self.state = SlotState(self.symbol, self.name)
         self.journal = VisionJournal(cfg)
+        # Rule-based pre-filter (pipeline/live/smc_rules.py): when enabled, Claude is
+        # only ever called for a FRESH ENTRY (prev_action==FLAT) once the mechanical
+        # sweep->CHoCH->OB/FVG pattern has actually fired -- not on a bare timer. This
+        # is what makes the slot both cheap (no Claude call on a dry poll) and
+        # backtestable (the "when do we even ask" decision is a pure function of OHLC).
+        # Position management (hold/exit/reverse) is untouched -- still Claude's call.
+        self.rule_gate = bool(p.get("rule_gate", False))
+        self.rule_timeframe = str(p.get("rule_timeframe", "M15"))
+        self.rule_swing_length = int(p.get("rule_swing_length", 10))
+        self.rule_history_bars = int(p.get("rule_history_bars", 5000))
+        # optional higher-timeframe "market confidence" cross-check: the fast
+        # rule_timeframe CHoCH is only actionable if this slower structure agrees
+        # (or is 'range', in which case it doesn't restrict direction). Unset
+        # (empty string) = no HTF check, LTF pattern alone gates entry.
+        self.rule_bias_timeframe = str(p.get("rule_bias_timeframe", "") or "")
+        self.rule_bias_swing_length = int(p.get("rule_bias_swing_length", 10))
+        self.max_trades_per_day = int(p.get("max_trades_per_day", 0)) or None  # 0/None = no cap
+        self._trade_day = None
+        self._trades_today = 0
+        self._last_candidate_ts = None
 
     def evaluate(self) -> SignalResponse:
         now_ts = pd.Timestamp.utcnow()
@@ -429,13 +449,25 @@ class VisionStrategy(BaseStrategy):
             if not self._within_active_hours(now_ts):
                 return self.state.cached() or self._flat("OFFHOURS", now)
 
-            # 1. cadence gate â€” between intervals, serve the cached decision so
+            # 1. cadence gate - between intervals, serve the cached decision so
             #    signal_id is stable and the EA does nothing.
             if not self.state.due(self.interval):
                 return self.state.cached() or self._flat("BOOT", now)
 
-            # 2. capture -> analyze (capture can raise; analyze never does)
+            # 1b. rule-based gate - FRESH ENTRIES ONLY. Holding/exiting an existing
+            #     position is untouched (still Claude's call every cadence). Zero
+            #     Claude tokens spent unless the mechanical pattern actually fired.
             prev = self.state.prev_action
+            if self.rule_gate and prev == "FLAT":
+                if not self._daily_cap_ok(now_ts):
+                    return self.state.cached() or self._flat("DAILYCAP", now)
+                cand = self._rule_candidate()
+                if cand is None or cand["choch_ts"] == self._last_candidate_ts:
+                    return self.state.cached() or self._flat("NOSETUP", now)
+                self._last_candidate_ts = cand["choch_ts"]   # don't re-ask about the same setup
+                logger.info(f"[{self.name}] rule candidate: {cand['reason']}")
+
+            # 2. capture -> analyze (capture can raise; analyze never does)
             bars = self.state.bars_in_state
             try:
                 if self.timeframes:
@@ -486,6 +518,8 @@ class VisionStrategy(BaseStrategy):
                 )
 
             resp = self.state.commit(action, builder)
+            if self.rule_gate and prev == "FLAT" and action != "FLAT" and self.state.last_changed:
+                self._trades_today += 1     # a fresh entry actually opened -> counts against the cap
             self.journal.record(self.symbol, self.name, png, decision,
                                 resp.signal_id, self.state.last_changed, self.archive_all)
             return resp
@@ -524,6 +558,52 @@ class VisionStrategy(BaseStrategy):
             elif m >= start or m < end:        # window wraps midnight
                 return True
         return False
+
+    def _daily_cap_ok(self, now_ts) -> bool:
+        """True if a fresh entry today would still be under `max_trades_per_day`.
+        Resets on UTC date change. No cap configured (None) -> always True."""
+        if self.max_trades_per_day is None:
+            return True
+        day = now_ts.date()
+        if self._trade_day != day:
+            self._trade_day = day
+            self._trades_today = 0
+        return self._trades_today < self.max_trades_per_day
+
+    # MT5-style label (matches this slot's `timeframes` param) -> pandas resample rule
+    _PANDAS_FREQ = {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
+                     "H1": "1h", "H4": "4h", "D1": "1D"}
+
+    def _resample(self, df, timeframe: str):
+        freq = self._PANDAS_FREQ.get(timeframe, timeframe)
+        agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+        if "volume" in df.columns:
+            agg["volume"] = "sum"          # smc.ob() needs a volume column
+        h = df.resample(freq, label="left", closed="left").agg(agg).dropna()
+        return h.iloc[:-1] if len(h) > 1 else h    # closed bars only
+
+    def _rule_candidate(self) -> dict | None:
+        """Pure rule-based sweep->CHoCH->OB/FVG check (pipeline/live/smc_rules.py)
+        on `rule_timeframe` closed bars, optionally gated by `rule_bias_timeframe`
+        structure ("market confidence" cross-check). Never raises -- any error is
+        treated as 'no setup' so a data hiccup degrades to FLAT, never to an
+        ungated Claude call."""
+        try:
+            from .smc_rules import htf_bias, smc_candidate
+            df = self.data.recent_bars(self.symbol, self.rule_history_bars)
+            if df is None or df.empty:
+                return None
+            h_c = self._resample(df, self.rule_timeframe)
+
+            bias = None
+            if self.rule_bias_timeframe:
+                h_bias = self._resample(df, self.rule_bias_timeframe)
+                bias = htf_bias(h_bias, swing_length=self.rule_bias_swing_length)
+
+            return smc_candidate(h_c, swing_length=self.rule_swing_length, bias=bias)
+        except Exception:
+            logger.exception(f"[{self.name}] rule_candidate check failed")
+            return None
 
     def _apply_guards(self, d: dict) -> str:
         """Confidence < min_confidence or RR < min_rr -> FLAT."""
@@ -1428,7 +1508,16 @@ class EternaStrategy(BaseStrategy):
 
     Validated @ $1000, 0.01 lot, $0.50/trade (research/eterna_revalidate.py):
       full 5.5y : net $2790, PF 1.57, maxDD -14.1%, 51%/yr, Ret/DD 3.63, 6/6 green years
-      2026 YTD  : net +$2159 (+216%), PF 2.69, maxDD -12.6%, WR 47%
+
+    [2026-08-17 audit] The "2026 YTD +216%/PF 2.69" figure once quoted here was wrong --
+    it came from research/eterna_revalidate.py's convention, which enters 1 bar LATER
+    (next bar's open, not this bar's close) and excludes the flip bar from the SL window
+    -- NOT what this class does. Re-tested THIS class's exact logic (entry @ flip-bar
+    close) on 2020-2026 XAUUSD H1: 7/7 green years, 679 trades, net +$2125 (+212%),
+    PF 1.41, maxDD -11.0% -- consistent with the "full 5.5y" line above, so that headline
+    number stands. The delayed-entry convention was also re-tested year-by-year and only
+    beat this class's convention in 1/7 years (2026); it LOST in 2020-2025 -- an overfit
+    artifact of one year, not a robust edge. Do not port delayed-entry into this class.
     atr_period 16 sits in the MIDDLE of a broad plateau (10..24 all healthy), which is why it
     was chosen over the marginally different 14 or 20 â€” plateau centre beats plateau peak.
 
