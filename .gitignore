@@ -37,3 +37,6 @@ _MONITOR/eterna_shadow.jsonl
 # artefak backup / binary tool (2026-08-06)
 vps-zrev-live.bundle
 tools/Autologon64.exe
+
+# isolated MT5 Strategy Tester instance (~1 GB: program + bases + history)
+mt5_tester/

@@ -13,9 +13,11 @@ from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 from ..fetch.base_fetcher import load_config
+from .book import BasketTracker, exposure, probe_mt5
 from .contracts import SignalSet
 from .signal import SignalEngine
 
@@ -28,6 +30,8 @@ _ea_timeout = max(3.0, 3 * _cfg["live"].get("poll_seconds", 1))  # EA "connected
 
 _start = time.time()
 _last_poll: dict[str, float] = {}   # symbol -> monotonic time of last EA poll
+_basket = BasketTracker()           # journals the autonomous Semi Marti EA's baskets
+_MT5_GRACE_SECONDS = 90             # boot window before a failed MT5 probe means 503
 
 
 def _ea_status() -> dict:
@@ -43,6 +47,7 @@ async def _heartbeat_loop():
     slots = ", ".join(f"{s['name']}({s['type']}->{s['symbol']})" for s in _strategies)
     while True:
         await asyncio.sleep(_hb_seconds)
+        _basket.poll()          # detect Semi Marti basket open/close -> journal
         ea = _ea_status()
         if not ea:
             ea_txt = "EA not seen yet"
@@ -66,15 +71,44 @@ app = FastAPI(title="Signal Server", version="2.1", lifespan=lifespan)
 
 
 @app.get("/health")
-def health() -> dict:
-    return {
-        "status": "ok",
+def health():
+    """Deep health check.
+
+    Returns 503 when MT5 is unreachable so the watchdog actually restarts the
+    brain.  Before 2026-08-19 this endpoint reported only uptime and EA polling,
+    so when the MT5 handle went stale after a terminal restart it kept answering
+    200 OK for hours while every /signals call raised
+    `Symbol 'XAUUSD' not found in MT5.` -- eterna silently stopped trading and
+    the watchdog never noticed.  A stale handle is only recoverable by restarting
+    the brain, which is exactly what a failing health check triggers.
+    """
+    up = int(time.time() - _start)
+    mt5_probe = probe_mt5(_default_symbol or "XAUUSD")
+    # Startup grace: the MT5 python binding needs a moment to attach in a fresh
+    # process, and a health check observed it failing at uptime 0s on a perfectly
+    # healthy boot.  Preflight already proved MT5 was reachable seconds earlier,
+    # so a failure inside the grace window is boot lag, not an outage -- reporting
+    # 503 there would have the watchdog kill a brain that is starting normally.
+    starting = (not mt5_probe["ok"]) and up < _MT5_GRACE_SECONDS
+    body = {
+        "status": "ok" if mt5_probe["ok"] else ("starting" if starting else "degraded"),
         "now_utc": pd.Timestamp.utcnow().isoformat(),
         "uptime_seconds": int(time.time() - _start),
         "strategies": [{"name": s["name"], "type": s["type"], "symbol": s["symbol"]}
                        for s in _strategies],
         "ea": _ea_status(),
+        "mt5": mt5_probe,
+        "exposure": exposure(_default_symbol or "XAUUSD"),
+        "semi_marti": _basket.state(),
     }
+    if not mt5_probe["ok"]:
+        if starting:
+            logger.warning(f"health STARTING ({up}s): MT5 not attached yet -- "
+                           f"{mt5_probe['detail']}")
+            return body                      # 200: do not trip the watchdog on boot
+        logger.error(f"health DEGRADED: MT5 probe failed -- {mt5_probe['detail']}")
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 @app.get("/signals", response_model=SignalSet)

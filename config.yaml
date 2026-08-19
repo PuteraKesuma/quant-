@@ -391,8 +391,23 @@ live:
     # 1-2 months we measure whether "caution" predicts losers -> only THEN earn the right to
     # let it filter. Honest forward-test, zero risk to the validated edge.
 
+    # DISABLED 2026-08-18. Two independent reasons, both measured, neither fixable by tuning:
+    #  1. UNREACHABLE GATE. min_confidence 65 was set to "match the prompt", never derived from
+    #     data. Claude's confidence on rule-flagged candidates runs 32-52 (mean 38): 0 of 71
+    #     candidates over a FULL YEAR would have passed, and the live journal agrees (smc_xau
+    #     fired 6 Claude calls on 2026-08-18, all FLAT, conf 40-45). The slot could never trade.
+    #  2. THE RULE ITSELF HAS NO EDGE. The walk-forward that justified enabling this slot came
+    #     from a harness with two lookahead leaks: the OB/FVG window searched b+30 bars INTO THE
+    #     FUTURE, and "unmitigated" meant "never mitigated in all of history" (i.e. it selected
+    #     setups by what price did next). Removed both (scratchpad/smc_rule_honest.py) and the
+    #     rule goes from 0.74 cand/wk @ -2.0R total to 18.87 cand/wk @ WR 14.3%, avgR -0.571,
+    #     -560R. Negative EITHER WAY. This confirms prompt_smc_mtf_v2.md's own header note:
+    #     "belum tervalidasi profit. Versi mekanis pola ini tidak ber-edge di backtest."
+    # Kept (not deleted) per project convention. Re-enabling requires a rule variant with a
+    # demonstrated edge on the LEAK-FREE harness FIRST -- an LLM filter cannot rescue a base
+    # that yields ~19 candidates/week at 14% WR.
     - name: smc_xau          # 2026-08-17 NEW ATTEMPT, fixes vision_smc_xau's core flaw:
-      enabled: true           #   a RULE-BASED gate (pipeline/live/smc_rules.py, smartmoneyconcepts
+      enabled: false          #   a RULE-BASED gate (pipeline/live/smc_rules.py, smartmoneyconcepts
                               #   package) decides WHEN to even ask Claude -- sweep -> CHoCH ->
                               #   unmitigated OB/FVG must mechanically fire first (see
                               #   pipeline/vision/prompt_smc_mtf_v2.md for the exact 3-part pattern).
@@ -512,8 +527,12 @@ live:
         timeframes: ["H4", "M15", "M5"]
         chart_bars: 200
 
+    # DISABLED 2026-08-18 -- same two reasons as smc_xau above (unreachable confidence gate +
+    # the rule's edge was an artifact of two lookahead leaks). USDJPY was the stronger pair on
+    # the leaky harness (0.49 cand/wk, WR 44%, +8R); on the leak-free one it is 13.33 cand/wk,
+    # WR 15.4%, avgR -0.539, -372R, negative in BOTH halves. Kept, not deleted.
     - name: smc_usdjpy
-      enabled: true
+      enabled: false
       type: vision
       symbol: USDJPY
       lot: 0.01
