@@ -598,7 +598,26 @@ governor:
   # --- demo-safe numbers (FBS-Demo 106271896, ~$287). Floor/daily LOOSE so they don't nuisance-trip a forward test;
   #     the per-trade risk cap stays $90 (harmless at 0.01 lot, but blocks any absurdly-wide stop). All values are
   #     read live from governor.json; if that file is missing, signal.py now FAILS CLOSED to max_risk_per_trade here. ---
-  max_risk_per_trade: 90             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
+  # 2026-08-20: 90 -> 70, from a Strategy Tester sweep of the eterna logic ported to
+  # MQL5 (EternaBot) and run every-tick on XAUUSD H1. $70 is never worse than $90 and
+  # better in two of three years -- it raises profit AND cuts drawdown, which is rare:
+  #     2023  +20.08 DD 23.63%  |  +20.08 DD 23.63%   (identical: no trade's stop
+  #                                                     fell in the 70-90 band that year)
+  #     2025 +273.44 DD 15.65%  | +239.43 DD 19.31%
+  #     2026 +725.99 DD 15.44%  | +477.89 DD 26.43%
+  #     total  +1019.51         |   +737.40
+  # Mechanism, not just a number: eterna's stop is the 16-bar H1 range, so a very wide
+  # stop means the recent bars were chaotic -- a low-quality signal. The cap filters
+  # those. Note a FIXED DOLLAR cap is the right shape here: in 2023 (gold ~1900, small
+  # ATR) it never binds, in 2026 (gold 4300-5600) it binds often -- i.e. it restricts
+  # exactly when volatility is high. A percent-of-equity cap would do the opposite,
+  # loosening as the account grows.
+  # CAVEAT: the cap bounds INTENDED risk at entry, not the realised loss. The largest
+  # single loss stayed -106.71 at every cap tested, including $50 -- gaps and slippage
+  # still get through.
+  # NOTE: governor.json overrides this at runtime (signal.py::_risk_cap prefers it),
+  # so that file was updated to 70.0 as well. Changing only this line does nothing.
+  max_risk_per_trade: 70             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
   daily_loss_usd: 250                # loose on demo (won't stop a normal forward-test day)
   daily_stop_buffer: 0
   maxloss_floor: 50                  # only flatten if the demo is nearly wiped (equity -> $50+buffer)

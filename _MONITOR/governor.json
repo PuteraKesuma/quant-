@@ -9,7 +9,7 @@
   "maxloss_stop_at": 50.0,
   "paused_daily": false,
   "paused_maxloss": false,
-  "max_risk_per_trade": 90.0,
+  "max_risk_per_trade": 70.0,
   "magics": [
     920617,
     920622,
