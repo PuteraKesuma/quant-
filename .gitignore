@@ -40,3 +40,6 @@ tools/Autologon64.exe
 
 # isolated MT5 Strategy Tester instance (~1 GB: program + bases + history)
 mt5_tester/
+
+# live basket journal (runtime data, grows continuously)
+_MONITOR/basket_journal.jsonl

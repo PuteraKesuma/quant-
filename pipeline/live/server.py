@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from ..fetch.base_fetcher import load_config
-from .book import BasketTracker, exposure, probe_mt5
+from .book import BasketTracker, exposure, probe_mt5, risk_snapshot
 from .contracts import SignalSet
 from .signal import SignalEngine
 
@@ -32,6 +32,7 @@ _start = time.time()
 _last_poll: dict[str, float] = {}   # symbol -> monotonic time of last EA poll
 _basket = BasketTracker()           # journals the autonomous Semi Marti EA's baskets
 _MT5_GRACE_SECONDS = 90             # boot window before a failed MT5 probe means 503
+_last_risk_key: tuple = ()          # dedupe repeated risk warnings in the heartbeat
 
 
 def _ea_status() -> dict:
@@ -48,6 +49,20 @@ async def _heartbeat_loop():
     while True:
         await asyncio.sleep(_hb_seconds)
         _basket.poll()          # detect Semi Marti basket open/close -> journal
+        # Surface account-level risk in the terminal/log. Warnings that persist
+        # are logged once per state change, not every heartbeat, so a basket that
+        # sits open for an hour does not bury the log.
+        try:
+            rs = risk_snapshot(_default_symbol or "XAUUSD")
+            key = tuple(rs.get("warnings", []))
+            global _last_risk_key
+            if key and key != _last_risk_key:
+                for w in rs["warnings"]:
+                    logger.warning(f"[risk] {w}  (equity {rs.get('equity')}, "
+                                   f"floating {rs.get('floating')})")
+            _last_risk_key = key
+        except Exception:       # noqa: BLE001 - never let reporting break the loop
+            logger.exception("risk heartbeat failed")
         ea = _ea_status()
         if not ea:
             ea_txt = "EA not seen yet"
@@ -99,6 +114,7 @@ def health():
         "ea": _ea_status(),
         "mt5": mt5_probe,
         "exposure": exposure(_default_symbol or "XAUUSD"),
+        "risk": risk_snapshot(_default_symbol or "XAUUSD"),
         "semi_marti": _basket.state(),
     }
     if not mt5_probe["ok"]:

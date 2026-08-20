@@ -123,6 +123,89 @@ def exposure(symbol: str = "XAUUSD") -> dict:
     }
 
 
+def risk_snapshot(symbol: str = "XAUUSD") -> dict:
+    """Account-level risk the individual strategies cannot see.
+
+    eterna asks the brain before entering, so it is governed. Semi Marti is an
+    autonomous EA that never asks -- and its stop is VIRTUAL: there is no broker
+    SL on its legs (`sl=0.0`), the EA itself closes the basket at -$75 floating.
+    Nothing in the system previously combined the two exposures, so a Semi Marti
+    basket sitting near its stop while eterna opens a position that also moves
+    against could take the account deeper than either strategy's own numbers
+    imply.
+
+    This REPORTS, it does not block. Blocking would necessarily fall on eterna
+    (the only one that asks), i.e. it would sacrifice the validated edge -- whose
+    profit is extremely concentrated (10 best trades = 85% of all profit) --
+    to protect the unvalidated one. Wrong way round. The regime gate handles
+    Semi Marti on the EA side instead.
+
+    All money maths uses the broker's own contract size and point, read live from
+    MT5 rather than hardcoded: FBS XAUUSD is digits=2, point=0.01,
+    contract=100oz, so at 0.01 lot a $1 price move is $1 -- but that ratio is a
+    property of this symbol on this broker, not a constant.
+    """
+    out = {"symbol": symbol, "warnings": []}
+    try:
+        mt5 = _mt5()
+        acc = mt5.account_info()
+        info = mt5.symbol_info(symbol)
+        if acc is None or info is None:
+            return {**out, "error": "account/symbol unavailable"}
+
+        equity = float(acc.equity)
+        contract = float(info.trade_contract_size)
+        positions = [p for p in (mt5.positions_get(symbol=symbol) or [])]
+
+        floating = round(sum(p.profit for p in positions), 2)
+        gross_lots = round(sum(p.volume for p in positions), 3)
+
+        # Worst case still ahead of us, per magic:
+        #   - a leg WITH a broker stop can only lose to that stop
+        #   - a leg WITHOUT one (Semi Marti) is bounded by the EA's basket stop,
+        #     which only holds while the EA is alive -- counted, but flagged
+        open_risk = 0.0
+        unprotected_lots = 0.0
+        for p in positions:
+            if p.sl:
+                open_risk += abs(p.price_open - p.sl) * p.volume * contract
+            else:
+                unprotected_lots += p.volume
+        if unprotected_lots:
+            # Semi Marti's virtual basket stop is the real bound for those legs
+            open_risk += SEMI_MARTI_BASKET_SL_USD
+
+        pct = lambda v: round(v / equity * 100, 2) if equity else 0.0
+        out.update({
+            "equity": round(equity, 2),
+            "floating": floating,
+            "floating_pct": pct(floating),
+            "gross_lots": gross_lots,
+            "worst_case_loss": round(open_risk, 2),
+            "worst_case_pct": pct(open_risk),
+            "unprotected_lots": round(unprotected_lots, 3),
+            "contract_size": contract,
+        })
+
+        if floating < 0 and abs(floating) >= equity * 0.05:
+            out["warnings"].append(
+                f"floating loss {floating:.2f} is {abs(pct(floating)):.1f}% of equity")
+        if open_risk >= equity * 0.20:
+            out["warnings"].append(
+                f"worst-case open risk {open_risk:.2f} is {pct(open_risk):.1f}% of equity")
+        if unprotected_lots:
+            out["warnings"].append(
+                f"{unprotected_lots:.2f} lots have NO broker stop (Semi Marti basket "
+                f"stop is enforced by the EA, not the server)")
+        return out
+    except Exception as e:                       # noqa: BLE001
+        logger.exception("risk_snapshot failed")
+        return {**out, "error": f"{type(e).__name__}: {e}"}
+
+
+SEMI_MARTI_BASKET_SL_USD = 75.0   # InpGlobalSL_USD in the running preset
+
+
 class BasketTracker:
     """Journals Semi Marti basket lifecycle from position snapshots.
 
