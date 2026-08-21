@@ -29,6 +29,31 @@ def check(name, status, detail="", fix=""):
     results.append((name, status, detail, fix))
 
 
+def _read_any(path: Path) -> str:
+    """Baca file teks tanpa menebak encoding-nya.
+
+    File .set bisa ditulis oleh dua pihak dengan encoding berbeda: skrip kita
+    (ASCII/UTF-8) atau MT5 sendiri saat tombol Save ditekan (UTF-16 LE, dengan
+    BOM). Membacanya dengan satu asumsi encoding menghasilkan teks kacau, dan
+    pencarian baris seperti "InpGlobalSL_USD=" gagal diam-diam.
+
+    Terjadi 2026-08-21: MT5 menulis ulang preset, skrip ini melaporkan
+    InpGlobalSL_USD=None -> "GAGAL: preset tidak membatasi kerugian", padahal
+    isinya baik-baik saja. Pemeriksa yang berteriak palsu akan diabaikan justru
+    saat dia benar-benar dibutuhkan.
+    """
+    raw = path.read_bytes()
+    for enc in ("utf-16", "utf-8-sig", "utf-8", "cp1252"):
+        try:
+            txt = raw.decode(enc)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+        # encoding yang benar menghasilkan baris Inp*= yang bisa dibaca
+        if "Inp" in txt and "\x00" not in txt:
+            return txt
+    return raw.decode("cp1252", errors="ignore")
+
+
 # ---------------------------------------------------------------- python + deps
 def c_python():
     v = sys.version_info
@@ -149,7 +174,7 @@ def c_files():
         # preset harus benar-benar memasang batas kerugian
         p = t / "MQL5" / "Presets" / "SemiMartiV10_GATED.set"
         if p.exists():
-            txt = p.read_text(errors="ignore")
+            txt = _read_any(p)
             sl = next((l.split("=", 1)[1].strip() for l in txt.splitlines()
                        if l.startswith("InpGlobalSL_USD=")), None)
             gate = next((l.split("=", 1)[1].strip() for l in txt.splitlines()
