@@ -1068,6 +1068,20 @@ bool RegimeAllowsNewSeries()
    if(!InpUseRegimeGate)
       return true;
 
+   // CACHE PER BAR. Fungsi ini dipanggil TIAP TICK selama EA flat, dan tiap
+   // panggilan menyalin ribuan bar, membuat handle iATR, lalu menghitung DUA
+   // Supertrend penuh. Di data tick M5 setahun itu jutaan kali: run 2024 tidak
+   // selesai dalam 40 menit karenanya.
+   //
+   // Ini setara PERSIS, bukan pendekatan: seluruh input diambil dari bar
+   // TERTUTUP saja (shift 1 di semua Copy*), jadi hasilnya tidak mungkin
+   // berubah di tengah bar. Hanya dihitung ulang saat bar gate baru tertutup.
+   static datetime s_bar = 0;
+   static bool     s_val = true;
+   datetime bt = iTime(_Symbol, InpGateTF, 1);
+   if(bt != 0 && bt == s_bar)
+      return s_val;
+
    int n = InpGateBars;
    double high[], low[], close[], atrBuf[];
    ArraySetAsSeries(high, false);
@@ -1097,6 +1111,11 @@ bool RegimeAllowsNewSeries()
    if(InpDebug)
       PrintFormat("GATE: ST_entry=%d ST_trend=%d -> %s", de, dt,
                   conflict ? "CONFLICT (new series allowed)" : "TREND (blocked)");
+   // Simpan HANYA hasil yang benar-benar dihitung. Jalur "return true" di atas
+   // adalah degradasi saat data belum siap -- kalau ikut disimpan, satu hiccup
+   // akan mengunci gate terbuka untuk sisa bar itu.
+   s_bar = bt;
+   s_val = conflict;
    return conflict;
   }
 
