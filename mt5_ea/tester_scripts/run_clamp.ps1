@@ -64,6 +64,13 @@ InpHistBars=5000
     }
     Get-Process terminal64 -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -like "$dir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    # metatester64 adalah proses yang MENGHITUNG; terminal64 cuma induknya.
+    # Membunuh induk saja meninggalkan agen yatim yang terus membakar CPU 100%
+    # -- terjadi 2026-08-21, satu proses berjalan 68 menit setelah run di-timeout
+    # dan memperlambat terminal LIVE. Difilter by Path supaya hanya menyentuh
+    # instance portable di $dir, bukan MT5 yang dipakai trading.
+    Get-Process metatester64 -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -like "$dir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
