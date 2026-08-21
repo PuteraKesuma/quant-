@@ -113,18 +113,54 @@ def _book_conflict(mt5_symbol: str, want_action: str, my_magic) -> bool:
     return False
 
 
+def _combined_budget() -> float:
+    """Ceiling on TOTAL $ at risk across every open book. 0 = off."""
+    try:
+        return float((_cfg().get("governor") or {}).get("max_combined_risk", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+
 def _risk_ok(entry: float, sl: float, lot: float, mt5_symbol: str) -> bool:
-    """True if a new position's $ risk (|entry-sl| * lot * contract_size) is within the cap.
-    Enforces the WMT $90/trade rule: a trade whose stop is too wide to size under the cap is SKIPPED."""
-    cap = _risk_cap()
-    if cap <= 0 or not sl:
+    """True if a new position's $ risk (|entry-sl| * lot * contract_size) fits BOTH
+    the per-trade cap and what is left of the combined-book budget.
+
+    Per-trade cap: a trade whose stop is too wide to size under the cap is SKIPPED
+    (0.01 is the minimum lot, so skipping is the only control available).
+
+    Combined budget: eterna's $70 cap and Semi Marti's $75 basket stop can be live
+    at the same time -- $145, or 27% of a $538 account. Charging each new entry
+    against a shared budget bounds that. It is deliberately NOT a blanket tighter
+    stop: measured on 2026 both books are open together only 0.8% of the time, so
+    clamping every eterna stop to $30 would cost ~$190/yr to defend a state that is
+    almost never on, while the budget rule touched just 3 of 42 entries.
+
+    NOT a full guarantee. The brain only gates ITS OWN entries. Semi Marti is a
+    self-contained EA, and 22% of its baskets in 2026 opened while eterna was
+    already holding -- the brain cannot stop that direction.
+    """
+    if not sl:
         return True
+    cap = _risk_cap()
     try:
         import MetaTrader5 as mt5
         info = mt5.symbol_info(mt5_symbol)
         if info is None:
             return True
-        return abs(entry - sl) * lot * info.trade_contract_size <= cap
+        risk = abs(entry - sl) * lot * info.trade_contract_size
+
+        budget = _combined_budget()
+        if budget > 0:
+            from .book import committed_risk
+            headroom = budget - committed_risk(mt5_symbol)
+            cap = min(cap, headroom) if cap > 0 else headroom
+            if risk > cap:
+                logger.info(f"risk gate: {risk:.2f} > headroom {cap:.2f} "
+                            f"(budget {budget:.0f}, already committed "
+                            f"{budget - headroom:.2f}) -> skip")
+        if cap <= 0:
+            return False
+        return risk <= cap
     except Exception:
         return True
 
@@ -1597,13 +1633,23 @@ class EternaStrategy(BaseStrategy):
         now = pd.Timestamp.utcnow()
         ts = now.isoformat()
         self._reconcile()
+        # A data problem is NOT an exit signal. If a position is open, emitting FLAT
+        # here would close it over a momentary gap in the bar feed, so hold instead
+        # and let the broker's SL/TP remain the exit. Only emit FLAT when we really
+        # are flat.
+        def _stall() -> SignalResponse:
+            if self._prev_action in ("BUY", "SELL"):
+                return self._emit(self._prev_action, self._sl, self._tp, ts)
+            return self._emit("FLAT", 0.0, 0.0, ts)
+
         df = self.data.recent_bars(self.symbol, self.history_bars)
         if df.empty:
-            return self._emit("FLAT", 0.0, 0.0, ts)
+            logger.warning(f"[{self.name}] no bars from feed -> holding current state")
+            return _stall()
         h = df.resample(self.timeframe, label="left", closed="left").agg(
             {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
         if len(h) < self.atr_period + self.struct_bars + 5:
-            return self._emit("FLAT", 0.0, 0.0, ts)                 # warming up
+            return _stall()                                          # warming up
 
         cur = now.floor(self.timeframe)
         h_c = h.iloc[:-1] if (h.index[-1] == cur and len(h) > 1) else h   # CLOSED bars only
@@ -1677,8 +1723,19 @@ class EternaStrategy(BaseStrategy):
         try:
             import MetaTrader5 as mt5
             mt5_symbol = self.cfg["symbols"][self.symbol]["mt5_symbol"]
-            mine = [p for p in (mt5.positions_get(symbol=mt5_symbol) or [])
-                    if p.magic == self.magic]
+            poss = mt5.positions_get(symbol=mt5_symbol)
+            if poss is None:
+                # MT5 not ready (typically the first polls after a restart).
+                # `or []` here would read as "no positions", the brain would emit
+                # FLAT, and the EA would CLOSE a live leg. That happened on
+                # 2026-08-21: a restart closed eterna's open BUY at +2.19 with
+                # reason=3 (DEAL_REASON_EXPERT) while TP sat far away at 4777.44.
+                # Leave _adopted False so evaluate() stays silent until we can
+                # actually see the book.
+                logger.warning(f"[{self.name}] positions_get -> None (MT5 not ready); "
+                               f"holding state, will retry")
+                return
+            mine = [p for p in poss if p.magic == self.magic]
             if mine:
                 p = mine[0]
                 act = "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL"
@@ -1727,4 +1784,25 @@ class SignalEngine:
                     + ", ".join(f"{s.name}({s.spec['type']}->{s.symbol})" for s in self.strategies))
 
     def evaluate(self, symbol: str) -> list[SignalResponse]:
-        return [s.evaluate() for s in self.strategies if s.symbol == symbol]
+        """Signals for `symbol`, WITHHOLDING any slot that has not yet read the book.
+
+        FLAT means "be flat", and the EA carries that out by CLOSING. So a slot that
+        cannot yet see the broker's positions must stay SILENT -- otherwise "I cannot
+        see your position" reaches the EA as "close your position", and the EA obeys.
+
+        Not hypothetical: on 2026-08-21 a brain restart closed eterna's open BUY at
+        +2.19 (reason=3, DEAL_REASON_EXPERT) with its TP still far away at 4777.44,
+        because positions_get() returned None during MT5 startup and the old code
+        read that as "no positions". Withholding makes the EA hold what it has.
+        """
+        out: list[SignalResponse] = []
+        for s in self.strategies:
+            if s.symbol != symbol:
+                continue
+            r = s.evaluate()                 # runs the slot's own reconcile first
+            if not getattr(s, "_adopted", True):
+                logger.warning(f"[{s.name}] broker book not read yet -> withholding "
+                               f"signal so the EA holds instead of closing")
+                continue
+            out.append(r)
+        return out

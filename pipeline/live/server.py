@@ -134,6 +134,9 @@ def signals(symbol: str = None) -> SignalSet:
         raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
     _last_poll[symbol] = time.time()   # record EA liveness
     try:
+        # Slots that have not yet read the broker's book are withheld by the
+        # engine (see SignalEngine.evaluate), so a startup race can never be
+        # delivered to the EA as "close your position".
         sigs = _engine.evaluate(symbol)
         return SignalSet(symbol=symbol, ts=pd.Timestamp.utcnow().isoformat(), signals=sigs)
     except Exception as e:

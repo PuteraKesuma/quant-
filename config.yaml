@@ -618,6 +618,19 @@ governor:
   # NOTE: governor.json overrides this at runtime (signal.py::_risk_cap prefers it),
   # so that file was updated to 70.0 as well. Changing only this line does nothing.
   max_risk_per_trade: 70             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
+  # 2026-08-21: ceiling on TOTAL $ at risk across every open book at once. 0 = off.
+  # eterna's $70 cap and Semi Marti's $75 basket stop can both be live -- $145,
+  # which is 27% of a $538 account. This bounds the pair at $105 (19.5%).
+  # Chosen INSTEAD of simply tightening eterna's stop, because the two books are
+  # open together only 0.8% of the time (measured on 2026: eterna open 21.9%,
+  # Marti 6.8%, both 0.8%). A blanket $30 stop-clamp pays for that rare state on
+  # EVERY trade -- tested every-tick over 2023-26 it returns $887 vs $1077
+  # unclamped AND has a worse worst-year drawdown (25.9% vs 23.7%). The budget
+  # rule bit on only 3 of 42 eterna entries in 2026 instead of all 42.
+  # NOT a full guarantee: the brain gates only its OWN entries, and 22% of Marti
+  # baskets in 2026 opened while eterna was already holding. Closing that side
+  # needs a change on the EA, not here.
+  max_combined_risk: 105
   daily_loss_usd: 250                # loose on demo (won't stop a normal forward-test day)
   daily_stop_buffer: 0
   maxloss_floor: 50                  # only flatten if the demo is nearly wiped (equity -> $50+buffer)

@@ -206,6 +206,50 @@ def risk_snapshot(symbol: str = "XAUUSD") -> dict:
 SEMI_MARTI_BASKET_SL_USD = 75.0   # InpGlobalSL_USD in the running preset
 
 
+def committed_risk(symbol: str) -> float:
+    """Dollars already at risk in OPEN positions on `symbol`, across every book.
+
+    Same accounting as risk_snapshot()["worst_case_loss"], pulled out so the
+    ENTRY path can consult it: a leg with a broker stop can only lose to that
+    stop; Semi Marti's legs carry no broker stop and are bounded by the EA's
+    virtual basket stop instead.
+
+    WHY THIS EXISTS
+    eterna is capped at $70 per trade and Semi Marti's basket at $75, so with
+    both open the account is exposed to $145 -- 27% of a $538 equity. Measured
+    on 2026 that state only exists 0.8% of the time, so clamping eterna's stop
+    on every trade to defend against it costs about $190 a year to fix
+    something that is almost never on. Charging the ENTRY against a combined
+    budget instead only bites when the other book is actually open: 3 of 42
+    eterna entries in 2026.
+
+    Fails to 0.0 rather than raising -- a risk check that throws must never be
+    what stops the brain from trading.
+    """
+    try:
+        import MetaTrader5 as mt5
+
+        positions = mt5.positions_get(symbol=symbol)
+        if not positions:
+            return 0.0
+        info = mt5.symbol_info(symbol)
+        contract = float(info.trade_contract_size) if info else 100.0
+
+        total = 0.0
+        unprotected = False
+        for p in positions:
+            if p.sl:
+                total += abs(p.price_open - p.sl) * p.volume * contract
+            else:
+                unprotected = True
+        if unprotected:
+            total += SEMI_MARTI_BASKET_SL_USD
+        return round(total, 2)
+    except Exception:                                # noqa: BLE001
+        logger.exception("committed_risk failed; treating as 0")
+        return 0.0
+
+
 class BasketTracker:
     """Journals Semi Marti basket lifecycle from position snapshots.
 
