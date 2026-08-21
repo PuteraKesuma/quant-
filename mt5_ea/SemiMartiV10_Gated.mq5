@@ -675,8 +675,23 @@ void ManageGlobalTrailing()
    // Basket EA INI saja -- bukan equity akun. Lihat catatan di MyFloatingPnL().
    // Sebelum perbaikan, trailing ini menyala karena floating ETERNA dan menutup
    // posisi EA ini; terekam live 2026-08-21 saat EA ini tidak punya posisi.
-   double runningProfit = MyFloatingPnL();
+   int    legs = 0;
+   double runningProfit = MyFloatingPnL(legs);
    double equity = runningProfit;          // puncak diukur pada P&L basket sendiri
+
+   // PENTING: saat sebuah leg DITUTUP, untungnya pindah dari floating ke balance,
+   // jadi runningProfit turun tanpa ada yang memburuk. Kode lama memakai
+   // ACCOUNT_EQUITY yang sudah memuat realized, jadi kebal terhadap ini. Versi
+   // floating-saja TIDAK kebal: basket 2 leg dengan floating +12, lalu leg #1 kena
+   // TP tetap $10 -> floating jadi +2 -> drop 10 >= step 2 -> SELURUH basket
+   // ditutup paksa. Padahal TP $10 di leg #1 itu memang desainnya dan terjadi
+   // terus-menerus. Maka: begitu jumlah leg berkurang, puncak di-baseline ulang
+   // ke level sekarang, sehingga trailing hanya menjaga sisa eksposur yang MASIH
+   // terbuka -- yang memang tujuannya.
+   static int s_legs = 0;
+   if(legs < s_legs)
+      equityPeak = runningProfit;
+   s_legs = legs;
 
    if(!trailingActive)
      {
@@ -738,9 +753,10 @@ void ManageGlobalTrailing()
 //| Memakai profit + swap supaya sebanding dengan equity - balance    |
 //| (keduanya mengecualikan komisi, yang sudah masuk ke balance).     |
 //+------------------------------------------------------------------+
-double MyFloatingPnL()
+double MyFloatingPnL(int &count)
   {
    double sum = 0.0;
+   count = 0;
    for(int i = (int)PositionsTotal() - 1; i >= 0; i--)
      {
       ulong t = PositionGetTicket(i);
@@ -751,8 +767,15 @@ double MyFloatingPnL()
       if(PositionGetString(POSITION_SYMBOL) != _Symbol)
          continue;
       sum += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      count++;
      }
    return sum;
+  }
+
+double MyFloatingPnL()
+  {
+   int dummy = 0;
+   return MyFloatingPnL(dummy);
   }
 
 bool CheckGlobalTP_SL()
