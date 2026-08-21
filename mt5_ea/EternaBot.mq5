@@ -53,6 +53,57 @@ CTrade   trade;
 datetime g_last_bar = 0;
 
 //+------------------------------------------------------------------+
+//| WILDER ATR -- computed here on purpose, NOT via iATR.             |
+//|                                                                  |
+//| MT5's built-in iATR is a SIMPLE moving average of True Range, not |
+//| Wilder smoothing. (MT4's was Wilder; MT5 changed it.) Measured on |
+//| 182 identical bars, iATR matched SMA(TR,16) to 0.0005 while it    |
+//| differed from Wilder by up to 9.64 on an ATR near 30.             |
+//|                                                                  |
+//| The LIVE brain uses Wilder -- EternaStrategy._atr is              |
+//| tr.ewm(alpha=1/n, adjust=False). So an EA built on iATR is a      |
+//| DIFFERENT STRATEGY from the one that trades the account, and its  |
+//| backtests describe something we do not run. That is exactly what  |
+//| happened: with the same bars and identical OHLC, the trend gate   |
+//| pointed -1 in the EA and +1 in the brain at 2026-02-16 06:00, and |
+//| the EA took 110 trades in 2023 where the brain's logic takes 71.  |
+//|                                                                  |
+//| Wilder: atr[n-1] = mean(tr[0..n-1]); atr[i] = (atr[i-1]*(n-1)+tr[i])/n
+//| Seeding with the SMA of the first n matches pandas' ewm closely   |
+//| after a few hundred bars, and both converge long before the bars  |
+//| this EA actually trades on.                                       |
+//+------------------------------------------------------------------+
+bool WilderATR(const double &high[], const double &low[], const double &close[],
+               const int n, const int period, double &atr[])
+  {
+   if(n < period + 1 || period < 1)
+      return false;
+   ArrayResize(atr, n);
+
+   double tr[];
+   ArrayResize(tr, n);
+   tr[0] = high[0] - low[0];                       // no previous close for bar 0
+   for(int i = 1; i < n; i++)
+     {
+      double hl = high[i] - low[i];
+      double hc = MathAbs(high[i] - close[i-1]);
+      double lc = MathAbs(low[i]  - close[i-1]);
+      tr[i] = MathMax(hl, MathMax(hc, lc));
+     }
+
+   double sum = 0.0;
+   for(int i = 0; i < period; i++)
+     {
+      sum += tr[i];
+      atr[i] = 0.0;                                // not enough history yet
+     }
+   atr[period-1] = sum / period;                   // seed
+   for(int i = period; i < n; i++)
+      atr[i] = (atr[i-1] * (period - 1) + tr[i]) / period;
+   return true;
+  }
+
+//+------------------------------------------------------------------+
 //| Supertrend direction, identical to EternaStrategy._supertrend     |
 //| Returns +1 / -1 per bar into dir[]; dir[n-1] is the newest.       |
 //+------------------------------------------------------------------+
@@ -113,29 +164,15 @@ void CloseMine()
      }
   }
 
-int g_atr = INVALID_HANDLE;
-
 int OnInit()
   {
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(50);
-   // Handle indikator dibuat SEKALI di sini. Versi sebelumnya memanggil iATR()
-   // lalu IndicatorRelease() di DALAM OnTick, tiap tick -- lihat catatan di OnTick.
-   g_atr = iATR(_Symbol, PERIOD_H1, InpATRPeriod);
-   if(g_atr == INVALID_HANDLE)
-     {
-      Print("ERROR: gagal membuat handle ATR");
-      return INIT_FAILED;
-     }
-   PrintFormat("EternaBot init: ATR%d entry x%.1f trend x%.1f TP1:%.0f lot %.2f",
+   // Tidak ada handle indikator: ATR dihitung sendiri (Wilder) supaya identik
+   // dengan brain live. iATR bawaan MT5 adalah SMA -- lihat WilderATR().
+   PrintFormat("EternaBot init: ATR%d(Wilder) entry x%.1f trend x%.1f TP1:%.0f lot %.2f",
                InpATRPeriod, InpMultEntry, InpMultTrend, InpTPRatio, InpLot);
    return INIT_SUCCEEDED;
-  }
-
-void OnDeinit(const int reason)
-  {
-   if(g_atr != INVALID_HANDLE)
-      IndicatorRelease(g_atr);
   }
 
 void OnTick()
@@ -157,15 +194,9 @@ void OnTick()
    if(CopyLow  (_Symbol, PERIOD_H1, 1, n, low)   != n) return;
    if(CopyClose(_Symbol, PERIOD_H1, 1, n, close) != n) return;
 
-   // Memakai handle yang dibuat di OnInit. Pola LAMA -- iATR() lalu CopyBuffer lalu
-   // IndicatorRelease(), semuanya di dalam OnTick -- TIDAK aman: handle indikator MT5
-   // dihitung ASINKRON, jadi CopyBuffer tepat setelah pembuatan bisa mengembalikan
-   // buffer yang belum siap. ATR bernilai 0 membuat SupertrendDirs melewati bar
-   // (a <= 0.0 -> continue) dan status band ikut rusak, sehingga EA masuk pada bar
-   // yang MELANGGAR gate trennya sendiri. Terukur di 2026: 42 trade dengan pola lama
-   // vs 27 yang seharusnya menurut logika yang sama di Python.
-   int got = CopyBuffer(g_atr, 0, 1, n, atrBuf);
-   if(got != n) return;
+   // ATR dihitung SENDIRI dengan smoothing Wilder, supaya sama dengan brain live.
+   // iATR bawaan MT5 adalah SMA dari True Range -- lihat catatan di WilderATR().
+   if(!WilderATR(high, low, close, n, InpATRPeriod, atrBuf)) return;
 
    int de[], dt[];
    if(!SupertrendDirs(high, low, close, atrBuf, n, InpMultEntry, de)) return;

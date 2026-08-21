@@ -119,11 +119,21 @@ def load_h1() -> pd.DataFrame:
     df["ts"] = pd.to_datetime(df["time"], unit="s", utc=True)
     df = df.set_index("ts")[["open", "high", "low", "close"]].sort_index()
 
-    # Penjaga: kalau riwayat bolong parah, gagalkan dengan berisik daripada
-    # diam-diam menghasilkan angka yang salah.
-    span_h = (df.index[-1] - df.index[0]).total_seconds() / 3600.0
-    if len(df) < 0.5 * span_h * (5.0 / 7.0):
-        raise RuntimeError(f"riwayat H1 terlalu bolong: {len(df)} bar untuk rentang {span_h:.0f} jam")
+    # Riwayat XAUUSD terminal ini menyimpan ~260 bar/tahun untuk 1996..2014 -- itu
+    # bar HARIAN yang menempati slot H1, bukan data per jam; H1 sungguhan baru mulai
+    # 2015 (~5.900 bar/tahun). Memakainya apa adanya membuat Supertrend dihitung
+    # melintasi batas di mana jarak antar-bar berubah, jadi wilayah jarang dibuang.
+    per_year = df.groupby(df.index.year).size()
+    dense = per_year[per_year >= 2000]
+    if dense.empty:
+        raise RuntimeError(f"tidak ada tahun dengan riwayat H1 padat: {per_year.to_dict()}")
+    df = df[df.index.year >= int(dense.index[0])]
+
+    # Penjaga: setelah dipotong, kepadatannya harus wajar. Gagal berisik lebih baik
+    # daripada diam-diam menghasilkan angka yang salah.
+    years = df.index[-1].year - df.index[0].year + 1
+    if len(df) < 3000 * years:
+        raise RuntimeError(f"riwayat H1 terlalu bolong: {len(df)} bar untuk {years} tahun")
     return df
 
 
@@ -167,8 +177,20 @@ def struct_stop(low: np.ndarray, high: np.ndarray, i: int, bars: int, side: int)
     return float(low[lo:i + 1].min()) if side == 1 else float(high[lo:i + 1].max())
 
 
-def simulate(df: pd.DataFrame, decide, struct_bars_of, cap=RISK_CAP):
-    """Mesin bersama. `decide(i)` -> (side, struct_bars) atau None.
+def simulate(df: pd.DataFrame, decide, exit_dec=None, cap=RISK_CAP):
+    """Mesin bersama. `decide(i)` -> (side, struct_bars) atau None untuk MASUK.
+
+    `exit_dec(i)` -> +1/-1/None: arah flip Supertrend entry pada bar i, TANPA
+    syarat gate tren. Ini penting dan pernah salah di sini:
+
+        brain live (signal.py::EternaStrategy.evaluate)
+            if prev in (BUY,SELL) and flipped and side != prev: -> FLAT
+
+    Live menutup pada flip berlawanan APA PUN. Versi pertama file ini menutup
+    hanya kalau flip itu juga SELARAS dengan gate tren, jadi dia memegang posisi
+    terlalu lama dan mengambil ~50% lebih sedikit trade daripada yang sebenarnya
+    dijalankan (71 vs 111 di 2023). Kalau exit_dec tidak diberikan, perilaku lama
+    dipakai -- jangan andalkan itu untuk apa pun yang meniru live.
 
     Mengembalikan (trades_df, equity_series) di mana equity adalah mark-to-market
     per bar: realisasi + floating memakai ekstrem yang MERUGIKAN di dalam bar.
@@ -215,8 +237,11 @@ def simulate(df: pd.DataFrame, decide, struct_bars_of, cap=RISK_CAP):
 
         # --- keputusan pada bar tertutup i ---
         d = decide(i)
-        if pos != 0 and d is not None and d[0] == -pos:
-            # flip berlawanan menutup lebih awal, di close bar sinyal
+        # Keluar: flip berlawanan APA PUN, seperti brain live. exit_dec memberi
+        # arah flip tanpa syarat selaras; kalau tidak ada, jatuh ke aturan lama
+        # (hanya flip yang selaras) -- lihat catatan di docstring.
+        opp = exit_dec(i) if exit_dec is not None else (d[0] if d is not None else None)
+        if pos != 0 and opp is not None and opp == -pos:
             pnl = (c[i] - entry) * pos * LOT * CONTRACT - COST
             run += pnl
             realised[i] = run
@@ -245,6 +270,8 @@ def simulate(df: pd.DataFrame, decide, struct_bars_of, cap=RISK_CAP):
 
 
 def make_single(df, cfg):
+    """-> (decide, exit_dec). decide = aturan MASUK (butuh flip + gate tren setuju);
+    exit_dec = arah flip saja, dipakai untuk KELUAR, tanpa syarat gate."""
     de = supertrend_dir(df, cfg["atr"], cfg["me"])
     dt = supertrend_dir(df, cfg["atr"], cfg["mt"])
 
@@ -254,7 +281,10 @@ def make_single(df, cfg):
         if dt[i] != de[i]:
             return None                      # gate tren tidak setuju
         return (int(de[i]), cfg["struct"])
-    return decide
+
+    def exit_dec(i):
+        return int(de[i]) if de[i] != de[i - 1] else None
+    return decide, exit_dec
 
 
 def make_vote(df, members, thresh):
