@@ -1,64 +1,156 @@
-# VPS recovery / redeploy guide (updated 2026-07-04)
+# Pemulihan sistem — kalau VPS ini hilang
 
-This branch (`vps-zrev-live`) is the full live trading system. If the VPS is replaced,
-everything here is recoverable from GitHub EXCEPT the few VPS-local secrets/data below.
-A full ZIP backup (code + data + .env + journals + this repo as `vps-zrev-live.bundle`)
-is kept OFF-VPS by the user — that zip contains secrets, never upload/share it.
+Diperbarui **2026-08-21**. Dokumen ini menggambarkan sistem yang BENAR-BENAR jalan
+hari ini. Versi sebelumnya (2026-07-04) sudah usang tujuh minggu: dia menyuruh
+memasang `zrev_xau`, `orb30_nas`, `liquidity_limit` dan `vision_smc` — semuanya sudah
+mati — sekaligus **tidak menyebut Semi Marti sama sekali**, padahal dia penghasil
+profit terbesar. Mengikutinya akan membangun ulang sistem yang salah.
 
-## What IS in this repo (recoverable)
-- `config.yaml` — live strategy slots (the deployed brain config).
-- `pipeline/` — FastAPI signal brain (`live/server.py`), strategies (`live/signal.py`),
-  the two standalone order managers (`live/liquidity_manager.py` pending LIMITs,
-  `live/orb_stop_manager.py` pending STOPs), shadow advisor (`live/advisor.py`),
-  vision capture (`vision/tv_capture.py`), backtests (`backtest/`).
-- `research/` — all audits/validation (reproducible), incl. `book_validation_500.py`,
-  `portfolio_best.py`, `signal_logic_audit.py`, `edge_refinements.py`.
-- `_DOC/` — audit reports, forward-test protocol, validation summaries.
-- `requirements.txt`, `mt5_ea/SignalExecutor.mq5`, all `START_*.bat` launchers,
-  `_MONITOR/watchdog_brain.ps1`.
+Jangan percaya dokumen ini begitu saja. Setelah selesai, jalankan:
 
-## What is NOT in git (in the ZIP backup / re-create on a new VPS)
-- **`.env`** — `ANTHROPIC_API_KEY=...` (advisor). Secret, never committed.
-- `data/Level_0_Raw/*.duckdb` — historical Dukascopy 1m data (research only; live
-  trading does NOT need it — the brain pulls live bars from MT5). Re-fetchable via
-  the pipeline if lost.
-- MetaTrader 5 terminal + FBS-Demo login ("Save account information" ON for
-  auto-login) + `SignalExecutor` EA attached to XAUUSD and US100 charts, Algo Trading ON.
-- `_MONITOR/jurnal.md`, `advisor_journal.jsonl`, `_MONITOR/forward_test.json`
-  (forward-test start marker) — operational journals (in the ZIP).
+```
+python tools\verify_system.py
+```
 
-## Redeploy steps on a fresh VPS (Windows)
-1. Install Python 3.11; `git clone` this repo, branch `vps-zrev-live` (or
-   `git clone vps-zrev-live.bundle` from the ZIP backup if GitHub is unavailable).
-2. `pip install -r requirements.txt`
-3. `python -m playwright install chromium` AND the MS VC++ 2015-2022 x64
-   redistributable (https://aka.ms/vs/17/release/vc_redist.x64.exe) — needed for the
-   advisor's TradingView capture (greenlet DLL).
-4. Restore `.env` (from the ZIP) — or create it with `ANTHROPIC_API_KEY=...`.
-5. Install MT5, log into the FBS-Demo account, attach `mt5_ea/SignalExecutor.mq5` to
-   the XAUUSD and US100 charts, enable "Algo Trading".
-6. Start everything once by hand to verify: `START_TRADING.bat` (preflight + brain),
-   `START_ADVISOR.bat`, `START_LIQMGR.bat`, `START_ORBMGR.bat`, and
-   `powershell -ExecutionPolicy Bypass -File _MONITOR\watchdog_brain.ps1`.
-7. Make it survive reboots: Startup-folder shortcuts for **MetaTrader 5, ORB Trading
-   Brain, ORB Brain Watchdog, Shadow Advisor, Liquidity Manager, ORB Stop Manager**
-   + Windows auto-logon (Sysinternals Autologon). Close RDP with **Disconnect (X),
-   never Sign out**. The watchdog auto-relaunches brain/advisor/liqmgr/orbmgr and MT5.
-8. Restore `_MONITOR/forward_test.json` from the ZIP if continuing the forward test
-   (otherwise the tracker restamps a new start).
+Skrip itu memeriksa MESIN-nya, bukan dokumen, jadi dia tidak bisa usang dengan cara
+yang sama. Dia melaporkan persis apa yang kurang dan cara memperbaikinya.
 
-## Live config summary (deployed 2026-07-04 — the FULL book)
-- `zrev_xau` (magic 920622, brain+EA): always-in Donchian S&R XAU 1H, entry20/exit20,
-  H1 EMA100 + Daily SMA50 dual trend gate, z-score dynamic lot with conservative caps
-  (lot_max 0.02, lot_per_balance 0.0000067), atr_stop_mult 3.0.
-- `orb30_nas` (magic 920617, **orb_stop_manager**, EA slot disabled): NAS NY 30m ORB
-  1:1, DST open + Daily SMA50 gate + 0.5R breakeven + 20:00 UTC close — entries via a
-  REAL pending STOP at the range boundary (fills AT the level, no M1-close slippage).
-- `liquidity_limit` (magic 920625, **liquidity_manager**, EA slot disabled): 15min
-  Supertrend(21, 5.5) flat-band limit, BUY at support / SELL at resistance, $13/$26,
-  one position, REAL pending LIMIT re-priced continuously.
-- **Shadow advisor** (Sonnet): annotates entries on 920617/920622/920625 with
-  CONFIRM/CAUTION — insight only, never blocks/places orders.
-- `vision_smc_xau` (920621): RETIRED. `mr_xau` (920623): artifact, never enable.
-- EA is strategy-agnostic and NEVER modified (`BreakevenMagics=920621` keeps the EA's
-  own breakeven away from the managers' magics).
+---
+
+## Yang jalan sekarang — dua strategi
+
+| | eterna | Semi Marti |
+|---|---|---|
+| Dijalankan oleh | brain Python + EA `SignalExecutor` | EA `SemiMartiV10_Gated` (mandiri) |
+| Chart | XAUUSD **M30** | XAUUSD **M5** |
+| Magic | 920627 | 20250822 |
+| Butuh brain? | **YA** — tanpa brain tidak ada sinyal | tidak |
+| Stop | SL/TP broker, median ~$48 (struktural) | basket SL **$75 virtual, dijaga EA** |
+| Preset | tidak perlu | **WAJIB** `SemiMartiV10_GATED.set` |
+
+Semua slot lain di `config.yaml` sengaja `enabled: false`. Jangan hidupkan tanpa
+validasi ulang.
+
+---
+
+## Tidak ada rahasia yang dibutuhkan untuk trading
+
+`.env` hanya berisi `ANTHROPIC_API_KEY`, dan itu cuma dipakai slot `vision` yang
+semuanya mati. **Sistem trading jalan tanpa API key apa pun.** Yang tidak ada di git:
+
+- `.env` — hanya perlu kalau slot vision dihidupkan lagi
+- `data/Level_0_Raw/*.duckdb` — data riset; live TIDAK memakainya (brain ambil bar
+  langsung dari MT5). Sumber ini juga terbukti bolong untuk 2026 — lihat catatan di
+  `research/eterna_ensemble_final.py`
+- `mt5_tester/` — instance MT5 portable ~920MB, untuk backtest saja
+- Login MT5 — tersimpan di MT5 sendiri (centang "Save account information")
+- `_MONITOR/*.jsonl` — jurnal operasional, riwayat saja
+
+---
+
+## Membangun ulang di mesin baru (Windows)
+
+**1. Python + kode**
+
+```
+Install Python 3.11 (centang "Add Python to PATH")
+git clone https://github.com/PuteraKesuma/quant- C:\Quant
+cd C:\Quant
+pip install -r requirements.txt
+```
+
+**2. MetaTrader 5**
+
+Install MT5, login ke akun, centang **"Save account information"** supaya login
+otomatis setelah reboot.
+
+**3. Pasang EA + preset**
+
+```
+INSTALL_EA.bat
+```
+
+Menyalin `SignalExecutor`, `SemiMartiV10_Gated`, dan kedua file preset ke semua
+terminal MT5 yang terpasang.
+
+**4. Pasang EA ke chart — MANUAL, tidak bisa diotomatiskan**
+
+MT5 tidak menyediakan cara memasang EA ke chart dari luar GUI-nya.
+
+- Chart **XAUUSD M30** → drag `SignalExecutor` (tanpa preset)
+- Chart **XAUUSD M5** → drag `SemiMartiV10_Gated` → di dialog inputs tekan
+  **Load** → pilih **`SemiMartiV10_GATED.set`**
+- Nyalakan tombol **Algo Trading**
+
+> **Langkah Load tidak boleh dilewati.** Default EA adalah `InpGlobalSL_USD = 0` —
+> **tidak ada batas kerugian sama sekali** pada martingale-nya. `InpDebug` juga
+> default `true`, yang pernah menghasilkan log 768MB dalam hitungan menit. Preset
+> memasang SL $75, menyalakan regime gate, dan mematikan debug.
+
+**5. Autostart**
+
+```
+INSTALL_AUTOSTART.bat
+```
+
+Memasang shortcut di folder Startup. Untuk benar-benar tahan reboot, aktifkan juga
+auto-login Windows (`netplwiz`), dan tutup RDP dengan **Disconnect (X), jangan Sign
+out** — Sign out mematikan semua proses.
+
+**6. Verifikasi**
+
+```
+python tools\verify_system.py
+```
+
+Harus lolos semua sebelum ditinggal jalan sendiri.
+
+---
+
+## Cara kerjanya saat hidup
+
+```
+Windows login
+   └─ folder Startup → _MONITOR\watchdog_shadow.ps1
+         ├─ hidupkan MetaTrader 5 kalau mati
+         └─ hidupkan brain (python -m pipeline.live.run_server) kalau mati
+               └─ layani /signals di 127.0.0.1:8000
+                     └─ SignalExecutor (chart M30) polling → kirim order eterna
+
+MetaTrader 5
+   └─ SemiMartiV10_Gated (chart M5) — mandiri, tidak menyentuh brain
+```
+
+Brain dan Semi Marti **tidak saling bergantung**. Brain mati → Semi Marti tetap jalan.
+MT5 mati → keduanya berhenti.
+
+---
+
+## Pengaman yang berlaku
+
+| Lapis | Nilai | Ditegakkan oleh |
+|---|---|---|
+| Risiko per trade eterna | $70 | brain (`signal.py::_risk_ok`) |
+| Budget risiko gabungan | $105 | brain — jatah eterna mengecil saat Marti terbuka |
+| Basket SL Semi Marti | $75 | **EA, bukan server** — kalau EA berhenti merespons, tidak ada yang menutup posisi |
+| Stop harian / lantai ekuitas | $250 / $50 | `monthly_governor` — **tidak jalan saat ini** |
+
+Governor sedang mati. Kalau ingin lapis terakhir itu hidup, jalankan
+`START_GOVERNOR.bat`. Daftar magic-nya sudah diperbaiki 2026-08-21 supaya benar-benar
+menjaga kedua strategi — sebelumnya dia menjaga tiga slot yang semuanya sudah mati,
+jadi dia adalah jaring pengaman yang tidak menjaga apa pun.
+
+---
+
+## Kalau GitHub juga hilang
+
+Simpan salinan OFF-VPS secara berkala:
+
+```
+git bundle create quant-backup.bundle --all
+```
+
+Satu file itu berisi seluruh riwayat repo. Pulihkan dengan
+`git clone quant-backup.bundle C:\Quant`. Simpan bersama `.env` (kalau slot vision
+dipakai) dan salinan `SemiMartiV10_GATED.set`. **Jangan pernah unggah bundle berisi
+`.env` ke tempat publik.**
