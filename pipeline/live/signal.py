@@ -113,6 +113,21 @@ def _book_conflict(mt5_symbol: str, want_action: str, my_magic) -> bool:
     return False
 
 
+def _stop_side_ok(action: str, sl: float, px: float, tp: float) -> bool:
+    """True when stop and target sit on the correct sides of the entry price.
+
+    A long must have sl < px < tp and a short tp < px < sl. Violating this is not
+    a mild inaccuracy: a backtest scores a wrong-side 'stop' as an instant WIN,
+    which turns a losing strategy into a spectacular one on paper. See
+    MeanReversionStrategy.evaluate for the case that motivated this.
+    """
+    if action == "BUY":
+        return sl < px < tp
+    if action == "SELL":
+        return tp < px < sl
+    return True
+
+
 def _combined_budget() -> float:
     """Ceiling on TOTAL $ at risk across every open book. 0 = off."""
     try:
@@ -1133,13 +1148,37 @@ class MeanReversionStrategy(BaseStrategy):
         ma, sd = float(win.mean()), float(win.std())
         if sd <= 0:
             return self._emit("FLAT", 0.0, 0.0, ts)
-        z = (float(cc.iloc[-1]) - ma) / sd
+        px = float(cc.iloc[-1])
+        z = (px - ma) / sd
+
+        # The stop is anchored to the MEAN, not to the entry, so it lands on the
+        # WRONG SIDE whenever price has run past stop_z. Entering at z = -2.8 with
+        # stop_z = 3.0 puts a long's "stop" only 0.2 sd below; at z <= -3.0 it sits
+        # AT OR ABOVE the entry. Measured on XAUUSD H1 2015-2026: 55.6% of BUY
+        # signals at entry_z 2.5 / stop_z 3.0 had the stop on the wrong side, and
+        # 100% at entry_z 3.0.
+        #
+        # A backtest that does not check this reads those as instant winners, which
+        # is exactly what happened: with the bug the strategy showed +$7936 over
+        # 2021-2026 and 6/6 green years; with the stop side enforced, every
+        # configuration tested LOSES (-$558 at best, -$2567 at worst).
+        #
+        # Treat this slot's docstring claims (OOS PF 2.7-3.2, 11/11 walk-forward)
+        # as UNVERIFIED -- they predate this check and may rest on the same
+        # artifact. Do not enable this slot without re-validating it.
+        def _guarded(action: str, sl: float, tp: float):
+            if not _stop_side_ok(action, sl, px, tp):
+                logger.warning(f"[{self.name}] skip {action}: stop/target on the wrong "
+                               f"side (sl={sl:.5f} px={px:.5f} tp={tp:.5f}, z={z:.2f})")
+                return self._emit("FLAT", 0.0, 0.0, ts)
+            self._entry_ts = now
+            self._last_bar_ts = last_bar
+            return self._emit(action, sl, tp, ts)
+
         if z <= -self.entry_z:
-            self._entry_ts = now; self._last_bar_ts = last_bar
-            return self._emit("BUY", round(ma - self.stop_z * sd, 5), round(ma, 5), ts)
+            return _guarded("BUY", round(ma - self.stop_z * sd, 5), round(ma, 5))
         if z >= self.entry_z:
-            self._entry_ts = now; self._last_bar_ts = last_bar
-            return self._emit("SELL", round(ma + self.stop_z * sd, 5), round(ma, 5), ts)
+            return _guarded("SELL", round(ma + self.stop_z * sd, 5), round(ma, 5))
         return self._emit("FLAT", 0.0, 0.0, ts)
 
     def _emit(self, action: str, sl: float, tp: float, ts: str) -> SignalResponse:

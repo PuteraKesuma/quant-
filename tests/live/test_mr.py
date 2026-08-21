@@ -29,3 +29,30 @@ def test_exit_changes_signal_id_and_resets():
     assert r.action == "FLAT"
     assert s._sl == 0.0 and s._tp == 0.0 and s._entry_ts is None
     assert r.signal_id.endswith("MR-2")          # counter advanced on the change
+
+
+# --- stop-side guard -------------------------------------------------------
+# MeanReversionStrategy anchors its stop to the MEAN, not to the entry, so the
+# stop lands on the wrong side whenever price runs past stop_z. On XAUUSD H1
+# 2015-2026 that was 55.6% of BUY signals at entry_z 2.5 / stop_z 3.0, and 100%
+# at entry_z 3.0. A backtest scores a wrong-side stop as an instant WIN: with the
+# bug the strategy showed +$7936 and 6/6 green years; with the stop side enforced
+# every configuration tested LOSES. These lock the invariant.
+from pipeline.live.signal import _stop_side_ok
+
+
+def test_long_needs_stop_below_and_target_above():
+    assert _stop_side_ok("BUY", sl=1990.0, px=2000.0, tp=2010.0)
+    assert not _stop_side_ok("BUY", sl=2001.0, px=2000.0, tp=2010.0)   # stop above entry
+    assert not _stop_side_ok("BUY", sl=2000.0, px=2000.0, tp=2010.0)   # stop AT entry
+    assert not _stop_side_ok("BUY", sl=1990.0, px=2000.0, tp=1999.0)   # target below entry
+
+
+def test_short_needs_stop_above_and_target_below():
+    assert _stop_side_ok("SELL", sl=2010.0, px=2000.0, tp=1990.0)
+    assert not _stop_side_ok("SELL", sl=1999.0, px=2000.0, tp=1990.0)  # stop below entry
+    assert not _stop_side_ok("SELL", sl=2010.0, px=2000.0, tp=2001.0)  # target above entry
+
+
+def test_flat_is_always_allowed():
+    assert _stop_side_ok("FLAT", sl=0.0, px=2000.0, tp=0.0)
