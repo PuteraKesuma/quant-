@@ -12,6 +12,7 @@ dilakukan. Exit code 0 kalau tidak ada yang GAGAL.
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -217,6 +218,51 @@ def c_brain():
 
 
 # ---------------------------------------------------------------- Semi Marti
+def _semimarti_attach():
+    """(waktu_init_terakhir, waktu_ex5, build_usang) dari log MT5.
+
+    MT5 memegang file lognya TETAP TERBUKA. Membacanya dengan cara biasa
+    mengembalikan isi dari cache, bukan isi sebenarnya -- terjadi 2026-08-21:
+    EA di-attach ulang 15:02:41, dibaca 15:03:08, dan pembacaan itu masih
+    menampilkan init lama pukul 13:13. Saya menyimpulkan user belum attach,
+    padahal sudah. Karena itu file dibuka dengan share ReadWrite dan dibaca
+    langsung dari stream, bukan lewat pembacaan yang bisa di-cache.
+    """
+    import datetime as dt
+    import io
+
+    base = Path(os.environ.get("APPDATA", "")) / "MetaQuotes" / "Terminal"
+    logs = sorted(base.glob("*/MQL5/Logs/*.log"),
+                  key=lambda p: p.stat().st_mtime, reverse=True) if base.is_dir() else []
+    if not logs:
+        return None, None, False
+    log = logs[0]
+
+    try:
+        with open(log, "rb", buffering=0) as fh:
+            raw = fh.read()
+        txt = raw.decode("utf-16", errors="ignore")
+    except OSError:
+        return None, None, False
+
+    last = None
+    for line in txt.splitlines():
+        if "SemiMartiV10_Gated" in line and "initialized" in line:
+            m = re.search(r"(\d{2}):(\d{2}):(\d{2})", line)
+            if m:
+                last = dt.datetime.combine(
+                    dt.date.fromtimestamp(log.stat().st_mtime),
+                    dt.time(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    if last is None:
+        return None, None, False
+
+    ex5 = log.parent.parent.parent / "Experts" / "SemiMartiV10_Gated.ex5"
+    build = dt.datetime.fromtimestamp(ex5.stat().st_mtime) if ex5.exists() else None
+    stale = bool(build and last < build)
+    return last, build, stale
+
+
+
 def c_semimarti(pos_info):
     """Semi Marti TIDAK bisa diverifikasi otomatis -- katakan itu, jangan diam.
 
@@ -246,6 +292,22 @@ def c_semimarti(pos_info):
             mt5.shutdown()
     except Exception:
         return
+
+    # Baca log MT5 untuk init TERAKHIR EA ini, lalu bandingkan dengan tanggal .ex5.
+    # Ini satu-satunya bukti otomatis bahwa EA benar-benar menempel -- posisi dan
+    # deal tidak cukup, karena regime gate bisa memblokir berjam-jam dan diamnya
+    # EA yang hidup terlihat identik dengan EA yang sudah terlempar dari chart.
+    att, build, stale = _semimarti_attach()
+    if att:
+        detail = f"init terakhir {att:%H:%M:%S}"
+        if build:
+            detail += f" | .ex5 {build:%H:%M:%S}"
+        if stale:
+            check("Semi Marti build", FAIL, detail,
+                  "EA yang JALAN lebih tua dari .ex5 yang terpasang -- remove lalu "
+                  "attach ulang supaya versi terbaru dimuat")
+        else:
+            check("Semi Marti build", OK, detail + " (versi terbaru)")
 
     if pos:
         check("Semi Marti aktif", OK, f"{len(pos)} posisi terbuka sekarang")
