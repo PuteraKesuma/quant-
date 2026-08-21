@@ -1,0 +1,22 @@
+# Repo ini menyimpan teks dengan LF, dan worktree-nya juga LF. Tanpa file ini,
+# core.autocrlf=true membuat git MENGHARAPKAN CRLF di worktree, sehingga 243 file
+# yang tidak pernah disentuh muncul sebagai "modified". Saat pemulihan darurat itu
+# berbahaya: `git status` penuh berisik palsu, dan perubahan yang NYATA tenggelam
+# di antaranya. Diukur 2026-08-21: 244 file berstatus modified, hanya 1 yang benar
+# benar berbeda isinya.
+#
+# Ditaruh di .gitattributes (bukan `git config core.autocrlf`) supaya ikut terbawa
+# saat repo di-clone ke VPS baru -- config lokal tidak ikut.
+* text=auto eol=lf
+
+# Artefak MetaTrader: biarkan byte-nya persis apa adanya.
+# .set ditulis MT5/PowerShell dengan CRLF; menormalkannya ke LF berisiko membuat
+# preset gagal terbaca, dan preset itulah yang memasang batas kerugian Semi Marti.
+*.ex5  binary
+*.set  -text
+*.mq5  -text
+
+# Artefak data / laporan: biner atau tidak untuk dibaca manusia.
+*.duckdb binary
+*.htm    -text
+*.csv    -text
