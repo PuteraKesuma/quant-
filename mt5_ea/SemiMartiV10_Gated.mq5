@@ -672,10 +672,11 @@ void ManageGlobalTrailing()
       return;
      }
 
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
-   double runningProfit = equity - balance;
-
+   // Basket EA INI saja -- bukan equity akun. Lihat catatan di MyFloatingPnL().
+   // Sebelum perbaikan, trailing ini menyala karena floating ETERNA dan menutup
+   // posisi EA ini; terekam live 2026-08-21 saat EA ini tidak punya posisi.
+   double runningProfit = MyFloatingPnL();
+   double equity = runningProfit;          // puncak diukur pada P&L basket sendiri
 
    if(!trailingActive)
      {
@@ -696,7 +697,9 @@ void ManageGlobalTrailing()
    if(InpDebug)
       PrintFormat("TRAILING: active equity=%.2f peak=%.2f drop=%.2f (start=%.2f step=%.2f)", equity, equityPeak, drop, InpTrailingStartUSD, InpTrailingStepUSD);
 
-   if(equityPeak >= (balance + InpTrailingStartUSD) && drop >= InpTrailingStepUSD)
+   // equityPeak sekarang puncak P&L BASKET (bukan equity akun), jadi ambangnya
+   // langsung InpTrailingStartUSD -- tidak lagi ditambah balance.
+   if(equityPeak >= InpTrailingStartUSD && drop >= InpTrailingStepUSD)
      {
       PrintFormat("Global trailing triggered: peak %.2f -> now %.2f (drop %.2f >= %.2f). Closing all EA positions.",
                   equityPeak, equity, drop, InpTrailingStepUSD);
@@ -709,11 +712,52 @@ void ManageGlobalTrailing()
 
 
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P&L mengambang milik EA INI saja (magic + simbol), bukan akun.    |
+//|                                                                  |
+//| KENAPA INI ADA                                                   |
+//| Versi sebelumnya memakai equity - balance, yaitu floating SELURUH |
+//| AKUN. Saat EA ini sendirian di akun (seperti di Strategy Tester)  |
+//| keduanya sama, jadi backtest tidak pernah menangkap masalahnya.   |
+//| Di akun LIVE eterna jalan bersamaan, dan akibatnya tiga-tiganya   |
+//| merusak:                                                          |
+//|   1. eterna floating +$40 -> Global TP "tercapai" -> basket EA    |
+//|      ini ditutup paksa walau sedang -$30. Rugi dikunci karena     |
+//|      strategi LAIN sedang menang.                                 |
+//|   2. eterna floating -$75 -> Global SL "tercapai" -> basket yang  |
+//|      sedang UNTUNG ikut ditutup.                                  |
+//|   3. Paling berbahaya: eterna floating +$50 sementara basket ini  |
+//|      -$100 -> diff hanya -$50, di atas ambang -$75, jadi SL TIDAK |
+//|      PERNAH menyala. Batas kerugian $75 gagal melindungi, dan     |
+//|      kerugian bisa tumbuh tanpa batas selama profit strategi lain |
+//|      menutupinya.                                                 |
+//| Terlihat live 2026-08-21: "Global trailing triggered" menyala     |
+//| berkali-kali saat EA ini TIDAK punya posisi sama sekali -- yang   |
+//| bergerak adalah floating eterna.                                  |
+//|                                                                  |
+//| Memakai profit + swap supaya sebanding dengan equity - balance    |
+//| (keduanya mengecualikan komisi, yang sudah masuk ke balance).     |
+//+------------------------------------------------------------------+
+double MyFloatingPnL()
+  {
+   double sum = 0.0;
+   for(int i = (int)PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t == 0 || !PositionSelectByTicket(t))
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      sum += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+     }
+   return sum;
+  }
+
 bool CheckGlobalTP_SL()
   {
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
-   double diff = equity - balance;
+   double diff = MyFloatingPnL();
    if(InpGlobalTP_USD>0 && diff >= InpGlobalTP_USD)
      {
       PrintFormat("Global TP reached: %.2f >= %.2f. Closing all EA positions.", diff, InpGlobalTP_USD);

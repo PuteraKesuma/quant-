@@ -191,6 +191,52 @@ def c_brain():
               "Periksa /health -> exposure")
 
 
+# ---------------------------------------------------------------- Semi Marti
+def c_semimarti(pos_info):
+    """Semi Marti TIDAK bisa diverifikasi otomatis -- katakan itu, jangan diam.
+
+    MT5 tidak mengekspos daftar EA yang menempel di chart, baik lewat API Python
+    maupun lewat file (parameter EA baru ditulis ke .chr saat profil disimpan).
+    Dan karena preset mematikan InpDebug, EA ini SENYAP -- tidak adanya log bukan
+    bukti dia mati, juga bukan bukti dia hidup.
+
+    Bahayanya nyata: MT5 hanya mengizinkan SATU EA per chart. Terjadi 2026-08-21,
+    SignalExecutor dan SemiMartiV10_Gated dipasang bergantian di chart XAUUSD M5
+    yang sama, dan masing-masing melempar yang lain. Versi pertama skrip ini
+    melaporkan "17/17 lolos" saat Semi Marti kemungkinan sudah tidak jalan.
+    """
+    import datetime as dt
+
+    try:
+        import MetaTrader5 as mt5
+        if not mt5.initialize():
+            return
+        try:
+            frm = dt.datetime.now() - dt.timedelta(days=3)
+            deals = mt5.history_deals_get(frm, dt.datetime.now() + dt.timedelta(days=1)) or []
+            sm = [d for d in deals if d.magic == 20250822]
+            pos = [p for p in (mt5.positions_get(symbol="XAUUSD") or [])
+                   if p.magic == 20250822]
+        finally:
+            mt5.shutdown()
+    except Exception:
+        return
+
+    if pos:
+        check("Semi Marti aktif", OK, f"{len(pos)} posisi terbuka sekarang")
+        return
+    if sm:
+        last = dt.datetime.utcfromtimestamp(max(d.time for d in sm))
+        check("Semi Marti aktif", WARN, f"tidak ada posisi; deal terakhir {last:%Y-%m-%d %H:%M} (server)",
+              "TIDAK BISA dipastikan otomatis. Lihat pojok kanan-atas chart XAUUSD M5: "
+              "harus tertulis nama EA + wajah tersenyum. MT5 hanya izinkan SATU EA per "
+              "chart -- SignalExecutor dan Semi Marti WAJIB di chart terpisah.")
+    else:
+        check("Semi Marti aktif", WARN, "tidak ada posisi & tidak ada deal 3 hari terakhir",
+              "Cek manual di chart XAUUSD M5 (nama EA + wajah tersenyum di pojok "
+              "kanan-atas). Pastikan TIDAK satu chart dengan SignalExecutor.")
+
+
 # ---------------------------------------------------------------- ketahanan
 def c_resilience():
     startup = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / \
@@ -225,9 +271,10 @@ if __name__ == "__main__":
     print("=" * 74)
     c_python()
     c_config()
-    c_mt5()
+    pos_info = c_mt5()
     c_files()
     c_brain()
+    c_semimarti(pos_info)
     c_resilience()
 
     print()
