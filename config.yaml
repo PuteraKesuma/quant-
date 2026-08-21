@@ -594,7 +594,18 @@ advisor:
 governor:
   enabled: true
   mode: rules                         # 2026-07-12 FBS-Demo forward-test: keep RULES path active (exercises the fixed cap)
-  magics: [920617, 920622, 920626]   # ORB + Z + Golden (the live book)
+  # 2026-08-21: was [920617, 920622, 920626] -- ORB + Z + Golden, and ALL THREE of
+  # those slots are disabled. The list named nothing that actually trades, so the
+  # governor would have been blind to the whole live book: eterna's losses would
+  # not have counted toward the daily stop, and neither strategy would have been
+  # flattened at the equity floor. The governor is not running today (its state
+  # file is stale since 2026-07-17), so nothing was lost -- but START_GOVERNOR.bat
+  # exists, and starting it would have produced a safety net that guarded nothing.
+  #   920627    eterna_xau  (brain-driven, carries a broker SL)
+  #   20250822  Semi Marti  (EA-driven; its basket stop is VIRTUAL, enforced by the
+  #                          EA rather than the server, so a governor backstop
+  #                          matters more here than for eterna)
+  magics: [920627, 20250822]
   # --- demo-safe numbers (FBS-Demo 106271896, ~$287). Floor/daily LOOSE so they don't nuisance-trip a forward test;
   #     the per-trade risk cap stays $90 (harmless at 0.01 lot, but blocks any absurdly-wide stop). All values are
   #     read live from governor.json; if that file is missing, signal.py now FAILS CLOSED to max_risk_per_trade here. ---
