@@ -156,7 +156,7 @@ def c_files():
         return
 
     need_ea = ["SignalExecutor.ex5", "SemiMartiV10_Gated.ex5"]
-    need_set = ["SemiMartiV10_GATED.set"]
+    need_set = ["SemiMartiV10_LIVE.set"]        # preset resmi sejak 2026-08-26
     for t in terms:
         miss_ea = [f for f in need_ea if not (t / "MQL5" / "Experts" / f).exists()]
         miss_set = [f for f in need_set if not (t / "MQL5" / "Presets" / f).exists()]
@@ -173,20 +173,116 @@ def c_files():
             check(f"Preset di terminal {tag}", OK, ", ".join(need_set))
 
         # preset harus benar-benar memasang batas kerugian
-        p = t / "MQL5" / "Presets" / "SemiMartiV10_GATED.set"
+        p = t / "MQL5" / "Presets" / "SemiMartiV10_LIVE.set"
         if p.exists():
             txt = _read_any(p)
             sl = next((l.split("=", 1)[1].strip() for l in txt.splitlines()
                        if l.startswith("InpGlobalSL_USD=")), None)
-            gate = next((l.split("=", 1)[1].strip() for l in txt.splitlines()
-                         if l.startswith("InpUseRegimeGate=")), None)
             if sl in (None, "0", "0.0"):
                 check("Preset: basket SL", FAIL, f"InpGlobalSL_USD={sl}",
                       "Preset ini TIDAK membatasi kerugian martingale")
             else:
                 check("Preset: basket SL", OK, f"InpGlobalSL_USD={sl}")
-            check("Preset: regime gate", OK if gate == "true" else WARN,
-                  f"InpUseRegimeGate={gate}")
+        _c_live_inputs(t / "MQL5" / "Presets" / "SemiMartiV10_LIVE.set")
+
+
+# Nilai yang, kalau live diam-diam berbeda dari preset, mengubah hasil secara
+# material. Bukan daftar lengkap -- ini yang paling mahal kalau salah.
+_CRITICAL = ("InpGlobalSL_USD", "InpGlobalTP_USD", "InpRequireBreakConfirm",
+             "InpUseRegimeGate", "InpStartLot", "InpMaxLayers",
+             "InpStartHour", "InpEndHour", "InpSignalMode", "InpMASource")
+
+# baris DumpInputs -> nama input, supaya log bisa dibandingkan dengan file .set
+_LOG_MAP = {
+    "InpGlobalTP_USD":        (r"BASKET\s*:.*?TP=\$([\d.]+)", float),
+    "InpGlobalSL_USD":        (r"BASKET\s*:.*?SL=\$([\d.]+)", float),
+    "InpRequireBreakConfirm": (r"KONFIRM\s*:.*?RequireBreakConfirm=(\w+)", str),
+    "InpUseRegimeGate":       (r"FILTER\s*:.*?RegimeGate=(\w+)", str),
+    "InpStartLot":            (r"MARTI\s*:.*?Lot=([\d.]+)", float),
+    "InpMaxLayers":           (r"MARTI\s*:.*?MaxLayers=(\d+)", float),
+    "InpStartHour":           (r"FILTER\s*:.*?Hours=(\d+)-\d+", float),
+    "InpEndHour":             (r"FILTER\s*:.*?Hours=\d+-(\d+)", float),
+    "InpSignalMode":          (r"SINYAL\s*:.*?Mode=(\d+)", float),
+    "InpMASource":            (r"SINYAL\s*:.*?MASource=(\d+)", float),
+}
+
+
+def _c_live_inputs(preset: Path):
+    """Bandingkan setelan EA yang BENAR-BENAR jalan dengan isi file preset.
+
+    Sampai 2026-08-26 ini tidak bisa diperiksa sama sekali: satu-satunya cara
+    adalah membuka dialog Inputs di MT5 secara manual. Akibatnya live berjalan
+    berminggu-minggu dengan InpRequireBreakConfirm=false sementara SEMUA file
+    preset menulis true -- jadi setiap backtest yang dipakai mengambil keputusan
+    menguji EA yang berbeda. MT5 mengingat input terakhir per-chart, dan kalau
+    tombol Load tidak ditekan file .set tidak pernah dibaca. Lebih buruk lagi,
+    mengganti .ex5 me-reset input ke DEFAULT EA, dan default InpGlobalSL_USD
+    adalah 0: basket tanpa stop loss. Itu terjadi pukul 15:17 hari itu.
+
+    Sekarang EA mencetak seluruh inputnya saat dimuat (DumpInputs), jadi
+    kebenarannya ada di log dan bisa dicocokkan di sini secara otomatis.
+    """
+    import re
+
+    if not preset.exists():
+        return
+    want = {}
+    for line in _read_any(preset).splitlines():
+        if "=" in line and not line.lstrip().startswith(";"):
+            k, v = line.split("=", 1)
+            want[k.strip()] = v.strip()
+
+    blob = _latest_input_dump()
+    if blob is None:
+        check("Input EA aktif", WARN, "belum ada blok INPUT AKTIF di log",
+              "Muat ulang EA sekali; sesudah itu setelan aktifnya tercatat sendiri")
+        return
+
+    beda = []
+    for key in _CRITICAL:
+        pat = _LOG_MAP.get(key)
+        if not pat or key not in want:
+            continue
+        m = re.search(pat[0], blob, re.S)
+        if not m:
+            continue
+        got_raw = m.group(1)
+        exp_raw = want[key]
+        if pat[1] is float:
+            same = abs(float(got_raw) - float(exp_raw)) < 1e-9
+        else:
+            same = got_raw.lower() == exp_raw.lower()
+        if not same:
+            beda.append(f"{key}: live={got_raw} preset={exp_raw}")
+
+    if beda:
+        check("Input EA aktif", FAIL, "; ".join(beda),
+              "EA jalan dengan setelan BUKAN dari preset. F7 -> Inputs -> Load -> "
+              "SemiMartiV10_LIVE.set -> OK")
+    else:
+        check("Input EA aktif", OK, "cocok dengan SemiMartiV10_LIVE.set")
+
+
+def _latest_input_dump() -> str | None:
+    """Blok INPUT AKTIF terakhir dari log MT5, dibaca unbuffered (log dipegang
+    terbuka oleh MT5; pembacaan ber-cache pernah basi 27 detik dan menyesatkan)."""
+    base = Path(os.environ.get("APPDATA", "")) / "MetaQuotes" / "Terminal"
+    logs = sorted(base.glob("*/MQL5/Logs/*.log"),
+                  key=lambda p: p.stat().st_mtime, reverse=True) if base.is_dir() else []
+    for log in logs[:3]:
+        try:
+            with open(log, "rb", buffering=0) as fh:
+                raw = fh.read()
+        except OSError:
+            continue
+        for enc in ("utf-16", "utf-8-sig", "utf-8", "cp1252"):
+            try:
+                txt = raw.decode(enc)
+            except (UnicodeDecodeError, LookupError):
+                continue
+            if "INPUT AKTIF" in txt:
+                return txt[txt.rfind("INPUT AKTIF"):][:2000]
+    return None
 
 
 # ---------------------------------------------------------------- brain
@@ -208,6 +304,23 @@ def c_brain():
     else:
         check("SignalExecutor polling", FAIL, "EA tidak menghubungi brain",
               "Pasang SignalExecutor di chart XAUUSD dan nyalakan Algo Trading")
+
+    # Penjaga basket: SL $75 Semi Marti itu VIRTUAL (posisi di broker sl=0.00),
+    # jadi EA yang hidup adalah satu-satunya penegaknya. Penjaga di brain adalah
+    # jaring terakhir kalau EA hilang dari chart -- pernah terjadi 2.5 hari tanpa
+    # ketahuan setelah reboot VPS.
+    g = h.get("guardian") or {}
+    if not g:
+        check("Penjaga basket", FAIL, "tidak ada di /health",
+              "Brain versi lama -- restart lewat START_TRADING.bat")
+    elif g.get("armed"):
+        det = (f"aktif di ${g.get('hard_stop_usd')} (SL EA ${g.get('ea_stop_usd')})"
+               f" | menyala {g.get('fired_count', 0)}x")
+        check("Penjaga basket", WARN if g.get("fired_count") else OK, det,
+              "Penjaga PERNAH menyala -- artinya EA gagal menegakkan SL-nya sendiri. "
+              "Periksa basket_journal.jsonl" if g.get("fired_count") else None)
+    else:
+        check("Penjaga basket", FAIL, "tidak aktif")
 
     risk = h.get("risk") or {}
     for w in risk.get("warnings") or []:
