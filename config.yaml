@@ -630,18 +630,33 @@ governor:
   # so that file was updated to 70.0 as well. Changing only this line does nothing.
   max_risk_per_trade: 70             # skip any entry whose $ risk (|entry-sl|*lot*contract) exceeds this
   # 2026-08-21: ceiling on TOTAL $ at risk across every open book at once. 0 = off.
-  # eterna's $70 cap and Semi Marti's $75 basket stop can both be live -- $145,
-  # which is 27% of a $538 account. This bounds the pair at $105 (19.5%).
-  # Chosen INSTEAD of simply tightening eterna's stop, because the two books are
-  # open together only 0.8% of the time (measured on 2026: eterna open 21.9%,
-  # Marti 6.8%, both 0.8%). A blanket $30 stop-clamp pays for that rare state on
-  # EVERY trade -- tested every-tick over 2023-26 it returns $887 vs $1077
-  # unclamped AND has a worse worst-year drawdown (25.9% vs 23.7%). The budget
-  # rule bit on only 3 of 42 eterna entries in 2026 instead of all 42.
+  # eterna's $70 cap and Semi Marti's $75 basket stop can both be live -- $145.
+  #
+  # 2026-08-26 RAISED 105 -> 145 by the owner, because 105 was not a ceiling, it
+  # was an off-switch. An open Semi Marti basket charges $75 against the budget,
+  # leaving eterna $30 of headroom -- but eterna's structure stops measure $40-$65.
+  # So while a basket was open eterna could not enter AT ALL. Measured live: since
+  # the brain came up on 08-21 there was exactly ONE qualifying eterna signal
+  # (08-25 22:00 BUY, risk $61.43) and the budget rejected it.
+  #
+  # The "both books open only 0.8% of the time" figure that justified 105 measured
+  # the wrong thing. What matters is whether Marti is open when ETERNA wants in,
+  # and Marti holds a basket ~16% of the time (21h of 136h over 6 baskets -- small
+  # sample, treat as rough). Culling ~1 signal in 6 is expensive here precisely
+  # because eterna's profit is concentrated: 10 trades produce 85% of it and
+  # missing the best 5 removes 58%, so a random cull can take a big one.
+  #
+  # 145 is the honest worst case of the pair as configured (26% of a $550 account).
+  # It is not new risk -- it is the exposure that already existed, now stated
+  # instead of half-blocked. The two books are rarely open together, so 26% is a
+  # tail, not a daily state.
+  # The stop-clamp alternative was rejected on its own merits and still is: a
+  # blanket $30 clamp tested every-tick over 2023-26 returns $887 vs $1077
+  # unclamped AND has a worse worst-year drawdown (25.9% vs 23.7%).
   # NOT a full guarantee: the brain gates only its OWN entries, and 22% of Marti
   # baskets in 2026 opened while eterna was already holding. Closing that side
   # needs a change on the EA, not here.
-  max_combined_risk: 105
+  max_combined_risk: 145
   daily_loss_usd: 250                # loose on demo (won't stop a normal forward-test day)
   daily_stop_buffer: 0
   maxloss_floor: 50                  # only flatten if the demo is nearly wiped (equity -> $50+buffer)

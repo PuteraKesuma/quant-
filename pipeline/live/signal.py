@@ -144,11 +144,20 @@ def _risk_ok(entry: float, sl: float, lot: float, mt5_symbol: str) -> bool:
     (0.01 is the minimum lot, so skipping is the only control available).
 
     Combined budget: eterna's $70 cap and Semi Marti's $75 basket stop can be live
-    at the same time -- $145, or 27% of a $538 account. Charging each new entry
-    against a shared budget bounds that. It is deliberately NOT a blanket tighter
-    stop: measured on 2026 both books are open together only 0.8% of the time, so
-    clamping every eterna stop to $30 would cost ~$190/yr to defend a state that is
-    almost never on, while the budget rule touched just 3 of 42 entries.
+    at the same time -- $145. Charging each new entry against a shared budget
+    bounds that. It is deliberately NOT a blanket tighter stop: clamping every
+    eterna stop to $30 tested every-tick over 2023-26 returns $887 vs $1077
+    unclamped, with a worse worst-year drawdown (25.9% vs 23.7%).
+
+    SET THE BUDGET ABOVE eterna's cap + Marti's basket stop, or it stops being a
+    ceiling and becomes an off-switch. At 105 the headroom left while a basket was
+    open was $30, and eterna's structure stops run $40-$65 -- so eterna could not
+    enter AT ALL for as long as Marti held, which is ~16% of the time. That cost
+    the 08-25 22:00 BUY (risk $61.43), the only qualifying signal between the
+    brain coming up on 08-21 and the fix on 08-26. The figure that justified 105
+    ("both books open together only 0.8% of the time") measured the wrong thing:
+    what matters is whether Marti is open when ETERNA wants in, not the overlap of
+    the two holding periods. Raised to 145 on 2026-08-26.
 
     NOT a full guarantee. The brain only gates ITS OWN entries. Semi Marti is a
     self-contained EA, and 22% of its baskets in 2026 opened while eterna was
