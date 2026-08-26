@@ -981,23 +981,110 @@ double GetDepthMultiplier(int layerIndex)
 
 //-------------------------- Entry logic ----------------------------
 // Open a single order and return its ticket (0 on failure)
+//+------------------------------------------------------------------+
+//| Kumpulkan tiket posisi milik EA ini saat ini.                     |
+//+------------------------------------------------------------------+
+void SnapshotMyPositions(ulong &out[])
+  {
+   ArrayResize(out, 0);
+   for(int i = (int)PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || !PositionSelectByTicket(tk))
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      int n = ArraySize(out);
+      ArrayResize(out, n + 1);
+      out[n] = tk;
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Cari posisi kita yang BELUM ada di snapshot `before`.             |
+//| Dipakai untuk memulihkan tiket saat broker membalas retcode 0.    |
+//+------------------------------------------------------------------+
+ulong FindNewPosition(const ulong &before[])
+  {
+   for(int i = (int)PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || !PositionSelectByTicket(tk))
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      bool known = false;
+      for(int j = 0; j < ArraySize(before); j++)
+         if(before[j] == tk) { known = true; break; }
+      if(!known)
+         return tk;
+     }
+   return 0;
+  }
+
 ulong OpenOrderReturnTicket(const ENUM_ORDER_TYPE type, double lot)
   {
    trade.SetExpertMagicNumber(InpMagicNumber);
    trade.SetDeviationInPoints(50);
+
+   // Foto buku posisi SEBELUM kirim order, supaya order yang berhasil tapi
+   // dilaporkan gagal masih bisa dikenali sesudahnya.
+   ulong before[];
+   SnapshotMyPositions(before);
+
    bool res = false;
    if(type == ORDER_TYPE_BUY)
       res = trade.Buy(lot, NULL, 0.0, 0.0, 0.0, InpOrderComment);
    else
       res = trade.Sell(lot, NULL, 0.0, 0.0, 0.0, InpOrderComment);
 
-   if(!res)
-     {
-      uint rc = trade.ResultRetcode();
-      PrintFormat("DIAG ERROR: Order failed rc=%u comment=%s GetLastError=%d", rc, trade.ResultComment(), GetLastError());
-      return 0;
-     }
    ulong ticket = trade.ResultOrder();
+
+   // JANGAN percaya nilai balik CTrade sendirian.
+   //
+   // Broker ini (FBS-Demo) membalas retcode 0 pada SETIAP order. CTrade hanya
+   // menganggap sukses kalau retcode DONE/PLACED, jadi Buy() mengembalikan false
+   // walau ordernya benar-benar tereksekusi. Terekam live 2026-08-25: keempat
+   // belas order mencatat "DIAG ERROR: Order failed rc=0 ... GetLastError=4756",
+   // sementara riwayat deal menunjukkan semuanya terisi dengan benar.
+   //
+   // Akibatnya bukan kosmetik. Fungsi ini mengembalikan 0, sehingga
+   // g_tp1_ticket dan g_trail_ticket tidak pernah terisi -- dan kedua mekanisme
+   // yang bergantung padanya MATI: TP tetap $10 di posisi #1 dan trailing $25
+   // di posisi #2. Basket hanya bisa keluar lewat Global TP/SL. Terlihat jelas
+   // di hasil 2026-08-25: empat basket, semuanya tutup di -75.27 / +40.11 /
+   // +40.22, tidak satu pun di $10 atau $25.
+   //
+   // Di Strategy Tester ini tidak pernah muncul, karena di sana order selalu
+   // membalas retcode DONE. Jadi backtest memakai Dual Entry yang utuh
+   // sementara akun live tidak -- perbedaan yang tidak akan pernah terlihat
+   // dari membandingkan angka saja.
+   //
+   // Perbaikannya: tanya BUKU POSISI, bukan nilai balik. Posisi baru dengan
+   // magic dan simbol kita yang belum ada di snapshot berarti order berhasil.
+   if(!res || ticket == 0)
+     {
+      ulong recovered = 0;
+      for(int attempt = 0; attempt < 10 && recovered == 0; attempt++)
+        {
+         recovered = FindNewPosition(before);
+         if(recovered == 0)
+            Sleep(50);          // eksekusi bisa asinkron; beri waktu terisi
+        }
+      if(recovered == 0)
+        {
+         PrintFormat("DIAG ERROR: Order benar-benar GAGAL rc=%u comment=%s GetLastError=%d",
+                     trade.ResultRetcode(), trade.ResultComment(), GetLastError());
+         return 0;
+        }
+      PrintFormat("PULIH: broker balas rc=%u tapi posisi #%I64u ADA -- tiket dipulihkan",
+                  trade.ResultRetcode(), recovered);
+      ticket = recovered;
+     }
    PrintFormat("Order opened: type=%s lot=%.2f ticket=%I64u", (type == ORDER_TYPE_BUY ? "BUY" : "SELL"), lot, ticket);
    if(ticket != 0 && FindTicketIndex(ticket) == -1)
      {

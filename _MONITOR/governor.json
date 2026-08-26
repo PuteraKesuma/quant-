@@ -1,10 +1,10 @@
 {
   "mode": "rules",
-  "day": "2026-08-25",
+  "day": "2026-08-26",
   "paused": false,
   "reason": "",
   "today_realized": 0.0,
-  "equity": 514.45,
+  "equity": 553.44,
   "daily_stop_at": -250.0,
   "maxloss_stop_at": 50.0,
   "paused_daily": false,
@@ -14,5 +14,5 @@
     920627,
     20250822
   ],
-  "updated": "2026-08-25T07:59:23.467390+00:00"
+  "updated": "2026-08-26T04:03:32.288344+00:00"
 }
