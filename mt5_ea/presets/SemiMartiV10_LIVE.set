@@ -1,0 +1,71 @@
+; SemiMartiV10_LIVE.set -- setelan LIVE akun 106271896, dibuat 2026-08-26.
+;
+; SETIAP input EA ada di sini, termasuk yang nilainya sama dengan default.
+; Sebabnya konkret: mengganti file .ex5 membuat MT5 me-reset input ke default,
+; dan default InpGlobalSL_USD adalah 0 -- basket TANPA stop loss. Itu benar-benar
+; terjadi 2026-08-26 pukul 15:17 dan hanya ketahuan karena EA sekarang mencetak
+; input aktifnya ke log. Preset yang tidak lengkap akan membiarkan lubang itu
+; terbuka lagi. Jangan pernah hapus baris dari file ini.
+;
+; Yang membedakan preset ini dari GATED/NOGATE:
+;   InpRequireBreakConfirm=false  -> sinyal mentah langsung jadi entry.
+;                                    Ini yang BENAR-BENAR berjalan di akun sejak
+;                                    lama; ketiga preset lama menulis true, jadi
+;                                    seluruh backtest lama menguji EA yang beda.
+;                                    Dipertahankan atas keputusan pemilik akun.
+;   InpUseRegimeGate=false        -> gate dimatikan (keputusan 2026-08-25).
+;   InpDebug=false                -> default EA true dan membanjiri log.
+;   InpShowIndicators=false       -> objek chart tidak perlu di VPS.
+;
+InpRSIPeriod=250
+InpMAPeriod=1
+InpRSILevelHigh=80.0
+InpRSILevelMid=50.0
+InpRSILevelLow=20.0
+InpMACDFast=5
+InpMACDSlow=13
+InpMACDSignal=9
+InpMACDNormalizePeriod=100
+InpMASource=0
+InpMASmaPeriod=21
+InpUseMartingale=true
+InpStartLot=0.01
+InpLotMultiplier=1.5
+InpMaxLayers=3
+InpOrderGapPips=25.0
+InpLayerStartBEP=3
+InpLayerBEPOffsetPips=1.0
+InpLayerOncePerSeries=true
+InpGlobalTP_USD=40.0
+InpGlobalSL_USD=75.0
+InpDailyTargetUSD=50.0
+InpUseTrailingUSD=true
+InpTrailingStartUSD=10.0
+InpTrailingStepUSD=2.0
+InpFirstEntry_TP_USD=10.0
+InpFirstEntry_Trail_USD=25.0
+InpLayer1DepthMult=1.5
+InpLayer2DepthMult=2.5
+InpLayer3DepthMult=4.0
+InpLimitExpiryMins=240
+InpStartHour=9
+InpEndHour=23
+InpUseNewsFilter=true
+InpNewsMinutesBefore=60
+InpNewsMinutesAfter=30
+InpNewsImpactLevel=2
+InpNewsCountry=USD
+InpRequireBreakConfirm=false
+InpConfirmMaxTicks=0
+InpShowIndicators=false
+InpDrawBars=50
+InpEAName=VYG - MRM
+InpOrderComment=WA HANYA INI 081227853434
+InpMagicNumber=20250822
+InpDebug=false
+InpSignalMode=2
+InpUseRegimeGate=false
+InpGateATRPeriod=16
+InpGateMultEntry=1.8
+InpGateMultTrend=3.8
+InpGateBars=400

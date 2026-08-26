@@ -1575,7 +1575,160 @@ int OnInit()
    EventSetTimer(1);
    trade.SetExpertMagicNumber(InpMagicNumber);
    PrintFormat("%s initialized (v1.70 full). ShowIndicators=%s DrawBars=%d", InpEAName, (InpShowIndicators?"ON":"OFF"), InpDrawBars);
+   DumpInputs();
+   AdoptDualEntry();
    return INIT_SUCCEEDED;
+  }
+
+//+------------------------------------------------------------------+
+//| Kenali kembali kaki Dual Entry dari posisi yang SUDAH terbuka.    |
+//|                                                                  |
+//| KENAPA INI ADA                                                   |
+//| OnInit() menolkan g_tp1_ticket dan g_trail_ticket. Akibatnya      |
+//| setiap kali EA dimuat ulang, basket yang sedang berjalan          |
+//| KEHILANGAN TP $10 dan trailing $25 -- tersisa hanya TP/SL basket. |
+//|                                                                  |
+//| Dan EA dimuat ulang jauh lebih sering daripada dugaan siapa pun:  |
+//| bukan cuma saat di-attach ulang, tapi juga saat timeframe chart   |
+//| diganti, DAN setiap kali dialog Properties (F7) ditutup. Pada     |
+//| 2026-08-26 itu terjadi dua kali dalam satu jam pada basket yang   |
+//| sama -- 14:44 (buka F7 untuk memeriksa input) dan 15:10 (kembali  |
+//| ke M5) -- dan kedua kalinya Dual Entry yang baru saja berhasil    |
+//| dipulihkan langsung hilang lagi.                                  |
+//|                                                                  |
+//| Aturan pemetaan: posisi diurutkan dari yang TERTUA. TryEnter()    |
+//| membuka #1 lebih dulu, jadi yang tertua = #1 (TP tetap) dan       |
+//| berikutnya = #2 (trailing). Sisanya adalah layer martingale dan   |
+//| tidak dikelola di sini.                                          |
+//|                                                                  |
+//| KHUSUS satu posisi: diperlakukan sebagai #2, BUKAN #1. Sebabnya   |
+//| #1 tutup lebih dulu (di $10) sementara #2 bertahan mengejar $25,  |
+//| jadi posisi tunggal yang tersisa hampir pasti #2. Kalaupun tebakan|
+//| ini salah, kerugiannya kecil: posisi cuma kehilangan TP $10 dan   |
+//| jatuh ke TP basket. Tebakan sebaliknya jauh lebih mahal -- kaki   |
+//| yang seharusnya lari sampai $25 akan dipotong di $10.             |
+//|                                                                  |
+//| Status trailing (g_trail_active/peak) TIDAK dipulihkan karena     |
+//| memang tidak tersimpan di mana pun. Itu aman: trailing menyala    |
+//| lagi sendiri begitu profit kaki #2 mencapai targetnya.            |
+//+------------------------------------------------------------------+
+void AdoptDualEntry()
+  {
+   ulong  tk[];
+   long   tm[];
+   int    n = 0;
+
+   for(int i = (int)PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t == 0 || !PositionSelectByTicket(t))
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      ArrayResize(tk, n + 1);
+      ArrayResize(tm, n + 1);
+      tk[n] = t;
+      tm[n] = (long)PositionGetInteger(POSITION_TIME_MSC);
+      n++;
+     }
+
+   if(n == 0)
+     {
+      Print("ADOPSI DUAL: tidak ada posisi terbuka -- mulai bersih");
+      return;
+     }
+
+   // urutkan dari yang TERTUA (insertion sort; n selalu kecil)
+   for(int i = 1; i < n; i++)
+     {
+      ulong kt = tk[i];
+      long  km = tm[i];
+      int   j  = i - 1;
+      while(j >= 0 && tm[j] > km)
+        {
+         tk[j + 1] = tk[j];
+         tm[j + 1] = tm[j];
+         j--;
+        }
+      tk[j + 1] = kt;
+      tm[j + 1] = km;
+     }
+
+   if(n == 1)
+     {
+      g_trail_ticket = tk[0];
+      PrintFormat("ADOPSI DUAL: 1 posisi -> dianggap kaki #2 (trailing $%.2f) "
+                  "ticket=%I64u. Kaki #1 dianggap sudah tutup.",
+                  InpFirstEntry_Trail_USD, tk[0]);
+     }
+   else
+     {
+      g_tp1_ticket   = tk[0];
+      g_trail_ticket = tk[1];
+      PrintFormat("ADOPSI DUAL: %d posisi -> kaki #1=%I64u (TP $%.2f), "
+                  "kaki #2=%I64u (trailing $%.2f)%s",
+                  n, tk[0], InpFirstEntry_TP_USD, tk[1],
+                  InpFirstEntry_Trail_USD,
+                  (n > 2 ? StringFormat(", %d layer martingale diabaikan", n - 2) : ""));
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Cetak SETIAP input yang mengubah perilaku, sekali saat dimuat.    |
+//|                                                                  |
+//| KENAPA INI ADA                                                   |
+//| MT5 mengingat input terakhir per-chart. Kalau tombol Load preset  |
+//| tidak ditekan, dialog memakai nilai lama dan EA jalan dengan      |
+//| setelan yang BUKAN isi file .set -- tanpa jejak apa pun.          |
+//|                                                                  |
+//| Itu benar-benar terjadi: 2026-08-26 ketahuan live berjalan dengan |
+//| InpRequireBreakConfirm=false, sementara ketiga file preset        |
+//| tertulis true dan SELURUH backtest memakai true. Jadi setiap      |
+//| angka yang dipakai mengambil keputusan sampai hari itu menguji EA |
+//| yang berbeda dari yang jalan di akun. Ketahuannya pun cuma karena |
+//| sebuah entry tidak masuk akal, lalu ditelusuri satu per satu.     |
+//|                                                                  |
+//| Sebelum ini satu-satunya cara memeriksa adalah membuka dialog     |
+//| Inputs di MT5 secara manual. Sekarang setelan sebenarnya ada di   |
+//| log tiap kali EA dimuat, jadi bisa diperiksa dari mana saja dan   |
+//| bisa dibandingkan langsung dengan .ini backtest.                  |
+//|                                                                  |
+//| Ini murni Print -- tidak menyentuh logika trading sama sekali.    |
+//+------------------------------------------------------------------+
+void DumpInputs()
+  {
+   Print("=== INPUT AKTIF (bandingkan dengan .set / .ini backtest) ===");
+   PrintFormat("SINYAL  : Mode=%d MASource=%d SmaPeriod=%d NormPeriod=%d "
+               "High=%.1f Low=%.1f",
+               InpSignalMode, InpMASource, InpMASmaPeriod,
+               InpMACDNormalizePeriod, InpRSILevelHigh, InpRSILevelLow);
+   PrintFormat("KONFIRM : RequireBreakConfirm=%s ConfirmMaxTicks=%d",
+               InpRequireBreakConfirm ? "true" : "false", InpConfirmMaxTicks);
+   PrintFormat("MACD    : Fast=%d Slow=%d Signal=%d | RSI Period=%d MA=%d",
+               InpMACDFast, InpMACDSlow, InpMACDSignal, InpRSIPeriod, InpMAPeriod);
+   PrintFormat("BASKET  : TP=$%.2f SL=$%.2f DailyTarget=$%.2f",
+               InpGlobalTP_USD, InpGlobalSL_USD, InpDailyTargetUSD);
+   PrintFormat("DUAL    : TP1=$%.2f Trail2=$%.2f",
+               InpFirstEntry_TP_USD, InpFirstEntry_Trail_USD);
+   PrintFormat("TRAIL   : Use=%s Start=$%.2f Step=$%.2f",
+               InpUseTrailingUSD ? "true" : "false",
+               InpTrailingStartUSD, InpTrailingStepUSD);
+   PrintFormat("MARTI   : Use=%s Lot=%.2f Mult=%.2f MaxLayers=%d Gap=%.1f "
+               "Depth=%.1f/%.1f/%.1f Expiry=%dm",
+               InpUseMartingale ? "true" : "false", InpStartLot,
+               InpLotMultiplier, InpMaxLayers, InpOrderGapPips,
+               InpLayer1DepthMult, InpLayer2DepthMult, InpLayer3DepthMult,
+               InpLimitExpiryMins);
+   PrintFormat("FILTER  : Hours=%d-%d News=%s RegimeGate=%s (e%.1f/t%.1f %s)",
+               InpStartHour, InpEndHour,
+               InpUseNewsFilter ? "true" : "false",
+               InpUseRegimeGate ? "true" : "false",
+               InpGateMultEntry, InpGateMultTrend, EnumToString(InpGateTF));
+   PrintFormat("AKUN    : Magic=%d Symbol=%s TF=%s",
+               InpMagicNumber, _Symbol, EnumToString((ENUM_TIMEFRAMES)_Period));
+   Print("=== AKHIR INPUT ===");
   }
 
 //+------------------------------------------------------------------+
