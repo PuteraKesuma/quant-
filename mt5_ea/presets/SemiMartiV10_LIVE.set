@@ -7,12 +7,31 @@
 ; input aktifnya ke log. Preset yang tidak lengkap akan membiarkan lubang itu
 ; terbuka lagi. Jangan pernah hapus baris dari file ini.
 ;
-; Yang membedakan preset ini dari GATED/NOGATE:
-;   InpRequireBreakConfirm=false  -> sinyal mentah langsung jadi entry.
-;                                    Ini yang BENAR-BENAR berjalan di akun sejak
-;                                    lama; ketiga preset lama menulis true, jadi
-;                                    seluruh backtest lama menguji EA yang beda.
-;                                    Dipertahankan atas keputusan pemilik akun.
+; 2026-08-26 SORE -- DIUBAH untuk akun REAL, atas keputusan pemilik akun setelah
+; adu langsung di tick asli, periode sama, semua input sama kecuali satu tombol:
+;
+;                    confirm=false        confirm=true
+;   net                  -$500.82           +$154.58
+;   profit factor            0.93               1.50
+;   trade                   3.226                 94
+;   DD ekuitas            100.4% (habis)       26.4%
+;
+; Yang menentukan bukan cuma angkanya, tapi FREKUENSInya:
+;   confirm=true  di tester : 0,8 basket/hari
+;   AKUN LIVE               : 1,2 basket/hari
+;   confirm=false di tester : 28,3 basket/hari
+; Akun bertingkah seperti true, bukan false. Berarti ada rem lain -- filter
+; berita, yang TIDAK bisa ditiru Strategy Tester (dibuktikan: run news=true dan
+; news=false menghasilkan angka identik sen per sen). Jadi dengan false, satu-
+; satunya yang mencegah perilaku 28 basket/hari adalah mekanisme yang tidak
+; pernah terukur dan bisa gagal diam-diam. Di akun real itu risiko yang tidak
+; perlu diambil.
+;
+;   InpRequireBreakConfirm=true   -> breakout, pullback, lalu re-break. Ini yang
+;                                    diuji dan menghasilkan +$154.58.
+;   InpUseNewsFilter=false        -> tester mengabaikannya, jadi mematikannya
+;                                    membuat LIVE = BACKTEST. Setelah ini setiap
+;                                    pengujian ke depan benar-benar berarti.
 ;   InpUseRegimeGate=false        -> gate dimatikan (keputusan 2026-08-25).
 ;   InpDebug=false                -> default EA true dan membanjiri log.
 ;   InpShowIndicators=false       -> objek chart tidak perlu di VPS.
@@ -50,12 +69,12 @@ InpLayer3DepthMult=4.0
 InpLimitExpiryMins=240
 InpStartHour=9
 InpEndHour=23
-InpUseNewsFilter=true
+InpUseNewsFilter=false
 InpNewsMinutesBefore=60
 InpNewsMinutesAfter=30
 InpNewsImpactLevel=2
 InpNewsCountry=USD
-InpRequireBreakConfirm=false
+InpRequireBreakConfirm=true
 InpConfirmMaxTicks=0
 InpShowIndicators=false
 InpDrawBars=50
