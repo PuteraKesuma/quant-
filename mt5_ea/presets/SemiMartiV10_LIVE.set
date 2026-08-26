@@ -29,9 +29,19 @@
 ;
 ;   InpRequireBreakConfirm=true   -> breakout, pullback, lalu re-break. Ini yang
 ;                                    diuji dan menghasilkan +$154.58.
-;   InpUseNewsFilter=false        -> tester mengabaikannya, jadi mematikannya
-;                                    membuat LIVE = BACKTEST. Setelah ini setiap
-;                                    pengujian ke depan benar-benar berarti.
+;   InpUseNewsFilter=true         -> DIPILIH pemilik akun (setara NOGATE.set).
+;                                    Tester mengabaikan kalender, jadi live akan
+;                                    trading LEBIH JARANG dari 0,8 basket/hari
+;                                    yang diuji. Edge per-trade tetap yang diuji;
+;                                    yang berbeda jumlah trade-nya.
+;                                    Ini AMAN dengan confirm=true, dan itu poin
+;                                    yang berubah: waktu confirm=false filter ini
+;                                    PENOPANG -- satu-satunya penahan 28 basket/
+;                                    hari, dan gagalnya berarti akun habis.
+;                                    Dengan confirm=true strateginya sudah untung
+;                                    sendiri (PF 1.50), jadi filter ini cuma rem
+;                                    tambahan: gagal termuat = trading agak lebih
+;                                    sering, bukan bencana.
 ;   InpUseRegimeGate=false        -> gate dimatikan (keputusan 2026-08-25).
 ;   InpDebug=false                -> default EA true dan membanjiri log.
 ;   InpShowIndicators=false       -> objek chart tidak perlu di VPS.
@@ -69,7 +79,7 @@ InpLayer3DepthMult=4.0
 InpLimitExpiryMins=240
 InpStartHour=9
 InpEndHour=23
-InpUseNewsFilter=false
+InpUseNewsFilter=true
 InpNewsMinutesBefore=60
 InpNewsMinutesAfter=30
 InpNewsImpactLevel=2
