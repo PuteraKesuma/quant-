@@ -7,8 +7,39 @@
 ; input aktifnya ke log. Preset yang tidak lengkap akan membiarkan lubang itu
 ; terbuka lagi. Jangan pernah hapus baris dari file ini.
 ;
-; 2026-08-26 SORE -- DIUBAH untuk akun REAL, atas keputusan pemilik akun setelah
-; adu langsung di tick asli, periode sama, semua input sama kecuali satu tombol:
+; 2026-08-26 MALAM -- DIKEMBALIKAN ke setelan yang menghasilkan untung hari ini,
+; atas permintaan pemilik akun. Direkonstruksi dari log, bukan dari ingatan:
+;
+;   basket +$39.73  tutup: "Global TP reached: 40.07 >= 40.00"
+;   basket +$15.70  tutup: "Global trailing triggered: peak 18.19 -> now 15.83
+;                           (drop 2.36 >= 2.00)"
+;
+; Baris kedua itu buktinya trailing MENYALA di $10/$2 saat itu. Jadi setelan yang
+; untung = confirm FALSE + trailing ON + martingale ON + news ON + TP40/SL75 +
+; gate OFF. Itulah isi file ini.
+;
+; CATATAN yang harus tetap terbaca oleh siapa pun yang membuka file ini:
+; confirm=false adalah varian yang KALAH telak di uji tick asli, periode sama,
+; semua input sama kecuali satu tombol:
+;
+;                    confirm=false        confirm=true
+;   net                  -$500.82           +$154.58
+;   profit factor            0.93               1.50
+;   trade                   3.226                 94
+;   DD ekuitas            100.4% (habis)       26.4%
+;
+; Bukti untung hari ini berdiri di atas DUA basket. Uji di atas berdiri di atas
+; 1.613. Pemilik akun mengetahui perbandingan ini dan tetap memilih setelan ini;
+; itu haknya, dan keputusan itu dicatat di sini apa adanya.
+;
+; Yang menahan setelan ini dari perilaku 28 basket/hari adalah filter berita --
+; mekanisme yang tidak muncul di backtest mana pun (Strategy Tester mengabaikan
+; kalender; dibuktikan: run news=true dan news=false menghasilkan angka identik
+; sen per sen) dan gagal diam-diam kalau kalender tidak termuat. Kalau suatu hari
+; jumlah basket melonjak jauh di atas ~1-2 per hari, ITU tandanya, dan penjaga
+; Python di -$110 adalah jaring terakhirnya.
+;
+; -- pembanding, adu langsung tick asli 1 Jul - 26 Agu 2026:
 ;
 ;                    confirm=false        confirm=true
 ;   net                  -$500.82           +$154.58
@@ -84,7 +115,7 @@ InpNewsMinutesBefore=60
 InpNewsMinutesAfter=30
 InpNewsImpactLevel=2
 InpNewsCountry=USD
-InpRequireBreakConfirm=true
+InpRequireBreakConfirm=false
 InpConfirmMaxTicks=0
 InpShowIndicators=false
 InpDrawBars=50
