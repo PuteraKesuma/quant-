@@ -26,7 +26,9 @@ Why this exists (2026-08-19):
    close time, realised P&L -- so that in a few months the question can be
    answered from a real sample instead of a guess.
 
-Nothing here places, modifies, or blocks an order.  It observes and reports.
+Everything here observes and reports, with ONE deliberate exception added
+2026-08-26: `BasketGuardian`, which can close a Semi Marti basket.  See its
+docstring for why that exception exists and how it avoids fighting the EA.
 """
 from __future__ import annotations
 
@@ -322,4 +324,200 @@ class BasketTracker:
             "legs": self.last_legs if self.open_since else 0,
             "peak_legs": self.peak_legs,
             "peak_floating_loss": self.peak_loss,
+        }
+
+
+# Backstop level. The EA's own basket stop is SEMI_MARTI_BASKET_SL_USD ($75); the
+# gap between them is deliberate headroom -- see BasketGuardian.
+GUARD_HARD_STOP_USD = 110.0
+GUARD_CONFIRM_POLLS = 3          # consecutive breaches before acting
+GUARD_COOLDOWN_S = 300           # do not fire twice in a row on the same event
+
+
+class BasketGuardian:
+    """Last-resort basket stop for Semi Marti, enforced from Python.
+
+    WHY THIS BREAKS THE "OBSERVE ONLY" RULE
+
+    Semi Marti's $75 basket stop is VIRTUAL. Its legs sit at the broker with
+    sl=0.00 and tp=0.00 -- go and look, the risk snapshot has warned about this
+    for days. The only thing that closes a losing basket is the EA itself,
+    running, on a chart, every tick.
+
+    So the EA is a single point of failure for the ONLY stop that exists. If it
+    is removed from the chart, if MT5 restarts without it, if the chart profile
+    loses it after a reboot (that happened 2026-07-05 and went unnoticed for 2.5
+    days), then the basket has no stop at all and can run to any depth. On
+    2026-08-26 the EA was re-initialised three times in one hour by ordinary
+    actions -- attaching, changing timeframe, closing the F7 dialog -- and each
+    re-init silently discarded state. Nothing about that arrangement is safe
+    enough to be the only line of defence on real money.
+
+    The brain is a separate process with its own MT5 connection. It survives EA
+    reloads, chart changes and terminal restarts. That makes it the right place
+    for a backstop.
+
+    HOW IT AVOIDS FIGHTING THE EA
+
+    It does not duplicate the EA's job. It triggers only where a WORKING EA
+    would already have acted long ago:
+
+      EA closes the basket at        -$75
+      largest real loss ever seen    -$75.34 live, -$74.49 in the tester
+      this guardian closes at       -$110
+
+    Reaching -$110 means the EA did not act at -$75, so it is not running or not
+    functioning. The $35 gap absorbs the slippage and gaps that can legitimately
+    carry a close past -$75 while the EA IS working, so in normal operation this
+    code never fires. If it ever does fire, that is itself the alarm.
+
+    Two more guards against acting on noise: the breach must hold for
+    GUARD_CONFIRM_POLLS consecutive polls (a single bad tick is not enough), and
+    a cooldown stops it firing repeatedly on one event.
+
+    RETCODES ARE NOT TRUSTED. This broker returns retcode 0 on every single
+    order -- opens and closes alike -- while actually executing them. That cost
+    the EA its Dual Entry for weeks (see SemiMartiV10_Gated.mq5,
+    OpenOrderReturnTicket). So success here is decided by re-reading the book and
+    checking the position is gone, never by the return code.
+    """
+
+    def __init__(self, magic: int = SEMI_MARTI_MAGIC,
+                 hard_stop: float = GUARD_HARD_STOP_USD,
+                 confirm_polls: int = GUARD_CONFIRM_POLLS,
+                 cooldown_s: float = GUARD_COOLDOWN_S,
+                 journal: Path = _JOURNAL):
+        self.magic = magic
+        self.hard_stop = abs(hard_stop)
+        self.confirm_polls = max(1, confirm_polls)
+        self.cooldown_s = cooldown_s
+        self.journal = journal
+        self.breaches = 0
+        self.last_fired: float | None = None
+        self.fired_count = 0
+        self.last_floating = 0.0
+        self.last_legs = 0
+
+    # ------------------------------------------------------------------ poll
+    def poll(self) -> dict:
+        """Call every heartbeat. Never raises -- a guardian that crashes is worse
+        than no guardian, because it looks present while doing nothing."""
+        try:
+            mt5 = _mt5()
+            mine = [p for p in (mt5.positions_get() or [])
+                    if p.magic == self.magic]
+            # profit + swap, matching how the EA measures its own basket
+            floating = round(sum(p.profit + p.swap for p in mine), 2)
+            self.last_floating, self.last_legs = floating, len(mine)
+
+            if not mine or floating > -self.hard_stop:
+                self.breaches = 0
+                return self.state()
+
+            self.breaches += 1
+            logger.warning(
+                f"[guardian] basket {floating:.2f} <= -{self.hard_stop:.0f} "
+                f"({self.breaches}/{self.confirm_polls}) -- the EA should have "
+                f"closed this at -{SEMI_MARTI_BASKET_SL_USD:.0f}")
+            if self.breaches < self.confirm_polls:
+                return self.state()
+
+            if self.last_fired and (time.time() - self.last_fired) < self.cooldown_s:
+                return self.state()
+
+            self._close_all(mine, floating)
+            return self.state()
+        except Exception:                                          # noqa: BLE001
+            logger.exception("BasketGuardian.poll failed")
+            return self.state()
+
+    # ------------------------------------------------------------- execution
+    def _close_all(self, positions, floating: float) -> None:
+        mt5 = _mt5()
+        self.last_fired = time.time()
+        self.fired_count += 1
+        logger.error(
+            f"[guardian] FIRING: closing {len(positions)} Semi Marti legs at "
+            f"{floating:.2f}. The EA did not enforce its own -"
+            f"{SEMI_MARTI_BASKET_SL_USD:.0f} stop.")
+
+        closed, failed = [], []
+        for p in positions:
+            if self._close_one(mt5, p):
+                closed.append(p.ticket)
+            else:
+                failed.append(p.ticket)
+
+        self._write({
+            "event": "guardian_fired",
+            "floating": floating,
+            "hard_stop": -self.hard_stop,
+            "legs": len(positions),
+            "closed": closed,
+            "failed": failed,
+        })
+        if failed:
+            logger.error(f"[guardian] STILL OPEN after close attempt: {failed} "
+                         f"-- manual intervention needed")
+
+    def _close_one(self, mt5, p) -> bool:
+        """Close one leg. Verifies by re-reading the book, not by retcode."""
+        opposite = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY \
+            else mt5.ORDER_TYPE_BUY
+        tick = mt5.symbol_info_tick(p.symbol)
+        if tick is None:
+            logger.error(f"[guardian] no tick for {p.symbol}; cannot close #{p.ticket}")
+            return False
+        price = tick.bid if opposite == mt5.ORDER_TYPE_SELL else tick.ask
+
+        req = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "position": p.ticket,
+            "symbol": p.symbol,
+            "volume": p.volume,
+            "type": opposite,
+            "price": price,
+            "deviation": 50,
+            "magic": self.magic,
+            "comment": "guardian",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        res = mt5.order_send(req)
+        rc = getattr(res, "retcode", None) if res else None
+
+        # Never trust rc: this broker returns 0 on success. Re-read the book.
+        for _ in range(10):
+            if not any(q.ticket == p.ticket
+                       for q in (mt5.positions_get(symbol=p.symbol) or [])):
+                logger.info(f"[guardian] closed #{p.ticket} (rc={rc})")
+                return True
+            time.sleep(0.05)
+        logger.error(f"[guardian] #{p.ticket} STILL OPEN after send (rc={rc}, "
+                     f"comment={getattr(res, 'comment', '')})")
+        return False
+
+    # ------------------------------------------------------------------ misc
+    def _write(self, rec: dict) -> None:
+        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "magic": self.magic, **rec}
+        try:
+            self.journal.parent.mkdir(parents=True, exist_ok=True)
+            with self.journal.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec) + "\n")
+        except Exception:                                          # noqa: BLE001
+            logger.exception("guardian journal write failed")
+
+    def state(self) -> dict:
+        return {
+            "armed": True,
+            "hard_stop_usd": -self.hard_stop,
+            "ea_stop_usd": -SEMI_MARTI_BASKET_SL_USD,
+            "floating": self.last_floating,
+            "legs": self.last_legs,
+            "breaches": self.breaches,
+            "confirm_polls": self.confirm_polls,
+            "fired_count": self.fired_count,
+            "last_fired": (time.strftime("%Y-%m-%dT%H:%M:%S%z",
+                                         time.localtime(self.last_fired))
+                           if self.last_fired else None),
         }

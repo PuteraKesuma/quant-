@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from ..fetch.base_fetcher import load_config
-from .book import BasketTracker, exposure, probe_mt5, risk_snapshot
+from .book import BasketGuardian, BasketTracker, exposure, probe_mt5, risk_snapshot
 from .contracts import SignalSet
 from .signal import SignalEngine
 
@@ -31,6 +31,7 @@ _ea_timeout = max(3.0, 3 * _cfg["live"].get("poll_seconds", 1))  # EA "connected
 _start = time.time()
 _last_poll: dict[str, float] = {}   # symbol -> monotonic time of last EA poll
 _basket = BasketTracker()           # journals the autonomous Semi Marti EA's baskets
+_guardian = BasketGuardian()        # last-resort stop; see BasketGuardian docstring
 _MT5_GRACE_SECONDS = 90             # boot window before a failed MT5 probe means 503
 _last_risk_key: tuple = ()          # dedupe repeated risk warnings in the heartbeat
 
@@ -49,6 +50,10 @@ async def _heartbeat_loop():
     while True:
         await asyncio.sleep(_hb_seconds)
         _basket.poll()          # detect Semi Marti basket open/close -> journal
+        # Backstop. Silent unless a Semi Marti basket passes -$110, which can only
+        # happen if the EA failed to enforce its own -$75. Runs on the heartbeat so
+        # it keeps working through EA reloads, chart changes and MT5 restarts.
+        _guardian.poll()
         # Surface account-level risk in the terminal/log. Warnings that persist
         # are logged once per state change, not every heartbeat, so a basket that
         # sits open for an hour does not bury the log.
@@ -116,6 +121,7 @@ def health():
         "exposure": exposure(_default_symbol or "XAUUSD"),
         "risk": risk_snapshot(_default_symbol or "XAUUSD"),
         "semi_marti": _basket.state(),
+        "guardian": _guardian.state(),   # backstop status, visible to the watchdog
     }
     if not mt5_probe["ok"]:
         if starting:
