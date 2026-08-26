@@ -206,3 +206,54 @@ def test_state_bisa_dibaca_untuk_health(tmp_path, patch_mt5):
     assert s["ea_stop_usd"] == -75.0
     assert s["legs"] == 1
     assert s["fired_count"] == 0
+
+
+# ------------------------------------------------- alarm laju basket
+# Live memakai confirm=false; yang menahannya cuma filter berita EA, yang gagal
+# DIAM-DIAM kalau kalender MT5 tidak termuat. Normal 1-2 basket/hari; tanpa rem
+# itu 28/hari -- laju yang di uji tick asli menghabiskan akun. Alarm ini yang
+# membuat kegagalan senyap itu terdengar.
+def tracker(tmp_path):
+    return book.BasketTracker(journal=tmp_path / "bj.jsonl")
+
+
+def test_laju_normal_tidak_memicu_alarm(tmp_path, patch_mt5):
+    fake = FakeMT5([])
+    patch_mt5(fake)
+    t = tracker(tmp_path)
+    for _ in range(2):                       # 2 basket buka-tutup
+        fake._pos = [FakePos(1, 5.0)]
+        t.poll()
+        fake._pos = []
+        t.poll()
+    s = t.state()
+    assert s["opens_24h"] == 2
+    assert s["rate_alarm"] is False
+
+
+def test_laju_melonjak_memicu_alarm(tmp_path, patch_mt5):
+    fake = FakeMT5([])
+    patch_mt5(fake)
+    t = tracker(tmp_path)
+    for _ in range(book.BASKET_RATE_ALARM + 1):
+        fake._pos = [FakePos(1, 5.0)]
+        t.poll()
+        fake._pos = []
+        t.poll()
+    s = t.state()
+    assert s["opens_24h"] == book.BASKET_RATE_ALARM + 1
+    assert s["rate_alarm"] is True
+
+
+def test_pembukaan_lebih_dari_24_jam_tidak_dihitung(tmp_path, patch_mt5):
+    import time as _t
+    patch_mt5(FakeMT5([]))
+    t = tracker(tmp_path)
+    t.opens = [_t.time() - 90000] * 20        # semua > 24 jam lalu
+    assert t.opens_24h() == 0
+    assert t.state()["rate_alarm"] is False
+
+
+def test_ambang_jauh_dari_laju_normal_maupun_bahaya(tmp_path):
+    """Ambang harus memisahkan 1-2/hari (normal) dari 28/hari (rem lepas)."""
+    assert 2 < book.BASKET_RATE_ALARM < 28

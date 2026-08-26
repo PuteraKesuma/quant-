@@ -322,6 +322,20 @@ def c_brain():
     else:
         check("Penjaga basket", FAIL, "tidak aktif")
 
+    # Laju basket. Setelan live memakai confirm=false (entry pada sinyal mentah);
+    # satu-satunya rem adalah filter berita EA, yang gagal DIAM-DIAM kalau
+    # kalender MT5 tidak termuat. Normal 1-2/hari. Tanpa rem: 28/hari -- laju yang
+    # di uji tick asli 8 minggu berakhir dengan akun habis.
+    sm = h.get("semi_marti") or {}
+    if "opens_24h" in sm:
+        n = sm["opens_24h"]
+        if sm.get("rate_alarm"):
+            check("Laju basket 24 jam", FAIL, f"{n} basket (normal 1-2)",
+                  "Filter berita EA kemungkinan TIDAK termuat. Periksa "
+                  "InpUseNewsFilter di log INPUT AKTIF dan kalender MT5")
+        else:
+            check("Laju basket 24 jam", OK, f"{n} basket (ambang alarm >6)")
+
     risk = h.get("risk") or {}
     for w in risk.get("warnings") or []:
         check("Peringatan risiko", WARN, w)

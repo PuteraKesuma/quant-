@@ -34,6 +34,7 @@ _basket = BasketTracker()           # journals the autonomous Semi Marti EA's ba
 _guardian = BasketGuardian()        # last-resort stop; see BasketGuardian docstring
 _MT5_GRACE_SECONDS = 90             # boot window before a failed MT5 probe means 503
 _last_risk_key: tuple = ()          # dedupe repeated risk warnings in the heartbeat
+_rate_warned = False                # dedupe the basket-rate alarm
 
 
 def _ea_status() -> dict:
@@ -54,6 +55,20 @@ async def _heartbeat_loop():
         # happen if the EA failed to enforce its own -$75. Runs on the heartbeat so
         # it keeps working through EA reloads, chart changes and MT5 restarts.
         _guardian.poll()
+        # Laju basket yang melonjak = rem lepas. Semi Marti live memakai
+        # confirm=false (entry pada sinyal mentah); satu-satunya yang menahannya
+        # adalah filter berita EA, yang gagal DIAM-DIAM kalau kalender MT5 tidak
+        # termuat. Normal 1-2/hari; tanpa rem itu 28/hari, laju yang di uji tick
+        # asli menghabiskan akun. Diperingatkan sekali per perubahan keadaan.
+        global _rate_warned
+        bs = _basket.state()
+        if bs.get("rate_alarm") and not _rate_warned:
+            logger.error(f"[basket] LAJU ABNORMAL: {bs['opens_24h']} basket dalam "
+                         f"24 jam (normal 1-2). Filter berita EA kemungkinan tidak "
+                         f"termuat -- periksa InpUseNewsFilter dan kalender MT5.")
+            _rate_warned = True
+        elif not bs.get("rate_alarm"):
+            _rate_warned = False
         # Surface account-level risk in the terminal/log. Warnings that persist
         # are logged once per state change, not every heartbeat, so a basket that
         # sits open for an hour does not bury the log.

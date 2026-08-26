@@ -1,6 +1,6 @@
 # Pemulihan sistem — kalau VPS ini hilang
 
-Diperbarui **2026-08-21**. Dokumen ini menggambarkan sistem yang BENAR-BENAR jalan
+Diperbarui **2026-08-26**. Dokumen ini menggambarkan sistem yang BENAR-BENAR jalan
 hari ini. Versi sebelumnya (2026-07-04) sudah usang tujuh minggu: dia menyuruh
 memasang `zrev_xau`, `orb30_nas`, `liquidity_limit` dan `vision_smc` — semuanya sudah
 mati — sekaligus **tidak menyebut Semi Marti sama sekali**, padahal dia penghasil
@@ -26,7 +26,7 @@ yang sama. Dia melaporkan persis apa yang kurang dan cara memperbaikinya.
 | Magic | 920627 | 20250822 |
 | Butuh brain? | **YA** — tanpa brain tidak ada sinyal | tidak |
 | Stop | SL/TP broker, median ~$48 (struktural) | basket SL **$75 virtual, dijaga EA** |
-| Preset | tidak perlu | **WAJIB** `SemiMartiV10_GATED.set` |
+| Preset | tidak perlu | **WAJIB** `SemiMartiV10_LIVE.set` |
 
 Semua slot lain di `config.yaml` sengaja `enabled: false`. Jangan hidupkan tanpa
 validasi ulang.
@@ -79,13 +79,34 @@ MT5 tidak menyediakan cara memasang EA ke chart dari luar GUI-nya.
 
 - Chart **XAUUSD M30** → drag `SignalExecutor` (tanpa preset)
 - Chart **XAUUSD M5** → drag `SemiMartiV10_Gated` → di dialog inputs tekan
-  **Load** → pilih **`SemiMartiV10_GATED.set`**
+  **Load** → pilih **`SemiMartiV10_LIVE.set`**
 - Nyalakan tombol **Algo Trading**
 
-> **Langkah Load tidak boleh dilewati.** Default EA adalah `InpGlobalSL_USD = 0` —
-> **tidak ada batas kerugian sama sekali** pada martingale-nya. `InpDebug` juga
-> default `true`, yang pernah menghasilkan log 768MB dalam hitungan menit. Preset
-> memasang SL $75, menyalakan regime gate, dan mematikan debug.
+> **Langkah Load tidak boleh dilewati, dan ini bukan formalitas.** Default EA adalah
+> `InpGlobalSL_USD = 0` — **tidak ada batas kerugian sama sekali** pada martingale-nya.
+> `InpDebug` juga default `true`, yang pernah menghasilkan log 768MB dalam hitungan
+> menit.
+>
+> Dua hal yang terbukti terjadi 2026-08-26 dan wajib kamu tahu:
+>
+> 1. **MT5 mengingat input terakhir per-chart.** Kalau tombol Load tidak ditekan,
+>    dialog memakai nilai lama dan file `.set` **tidak pernah dibaca**. Live berjalan
+>    berminggu-minggu dengan `InpRequireBreakConfirm` yang berbeda dari SEMUA file
+>    preset, sehingga setiap backtest yang dipakai mengambil keputusan menguji EA
+>    yang berbeda.
+> 2. **Mengganti file `.ex5` me-reset input ke DEFAULT.** Setelah recompile, EA
+>    sempat jalan dengan `SL=$0` — basket tanpa stop. Ketahuan dalam hitungan detik
+>    hanya karena EA sekarang mencetak input aktifnya.
+>
+> Setelah memasang, WAJIB periksa log Experts. EA mencetak blok `=== INPUT AKTIF ===`
+> setiap kali dimuat. `python tools\verify_system.py` membandingkannya otomatis
+> dengan file preset dan menyatakan FAIL kalau berbeda. **Jangan pernah menganggap
+> preset sudah termuat tanpa melihat blok itu.**
+>
+> Jangan pula membuka dialog Properties (F7) saat ada posisi terbuka: menutupnya
+> me-restart EA. Sejak 2026-08-26 EA mengadopsi kembali posisi yang ada
+> (`ADOPSI DUAL`), tapi sebelum itu setiap restart menghapus TP $10 dan trailing $25
+> dari basket yang sedang berjalan.
 
 **5. Autostart**
 
@@ -131,14 +152,37 @@ MT5 mati → keduanya berhenti.
 | Lapis | Nilai | Ditegakkan oleh |
 |---|---|---|
 | Risiko per trade eterna | $70 | brain (`signal.py::_risk_ok`) |
-| Budget risiko gabungan | $105 | brain — jatah eterna mengecil saat Marti terbuka |
-| Basket SL Semi Marti | $75 | **EA, bukan server** — kalau EA berhenti merespons, tidak ada yang menutup posisi |
-| Stop harian / lantai ekuitas | $250 / $50 | `monthly_governor` — **tidak jalan saat ini** |
+| Budget risiko gabungan | $145 | brain — plafon jujur atas worst case pasangan ini |
+| Basket TP / SL Semi Marti | $40 / $75 | **EA, VIRTUAL** — posisi di broker `sl=0.00` |
+| Trailing global basket | $10 / $2 | EA |
+| Dual Entry | TP $10 kaki #1, trailing $25 kaki #2 | EA |
+| **Penjaga basket** | **−$110** | **brain (`book.py::BasketGuardian`)** |
+| **Alarm laju basket** | **>6 per 24 jam** | **brain — peringatan, bukan pemutus** |
+| Stop harian / lantai ekuitas | $250 / $50 | `monthly_governor` |
 
-Governor sedang mati. Kalau ingin lapis terakhir itu hidup, jalankan
-`START_GOVERNOR.bat`. Daftar magic-nya sudah diperbaiki 2026-08-21 supaya benar-benar
-menjaga kedua strategi — sebelumnya dia menjaga tiga slot yang semuanya sudah mati,
-jadi dia adalah jaring pengaman yang tidak menjaga apa pun.
+**Kenapa penjaga di brain itu ada.** SL $75 Semi Marti tidak ada di broker — posisi
+duduk di sana dengan `sl=0.00`. Satu-satunya yang menutup basket rugi adalah EA yang
+hidup di chart. Itu titik kegagalan tunggal untuk satu-satunya stop yang ada, dan EA
+lebih mudah terganggu daripada dugaan siapa pun: 2026-08-26 dia ter-restart tiga kali
+dalam satu jam hanya karena memasang ulang, mengganti timeframe, dan menutup dialog
+F7. Pada 2026-07-05 reboot VPS menghidupkan MT5 **tanpa EA di chart** dan tidak ada
+yang sadar selama 2,5 hari. Brain adalah proses terpisah yang selamat dari semua itu.
+
+Penjaga menyala di −$110, jauh di belakang SL EA ($75) dan di belakang rugi terburuk
+yang pernah terjadi (−$75.34). Jadi dalam operasi normal dia **tidak pernah menyala**
+— kalau sampai menyala, itu sendiri alarmnya. Lihat `fired_count` di `/health`.
+
+**Kenapa alarm laju ada.** Setelan live memakai `InpRequireBreakConfirm=false`, yang
+membuka posisi pada sinyal mentah. Yang menahannya cuma filter berita EA — dan filter
+itu gagal DIAM-DIAM kalau kalender MT5 tidak termuat. Laju normal 1–2 basket/hari;
+tanpa rem itu 28/hari, dan run tick-asli 8 minggu pada laju tersebut berakhir dengan
+akun habis. Alarm >6 memisahkan keduanya dengan jarak lebar.
+
+**Broker ini selalu membalas `retcode 0`** pada setiap order, buka maupun tutup,
+padahal eksekusinya berhasil. Karena itu EA memulihkan tiket dengan memindai posisi
+(`PULIH: ...`) dan penjaga Python memverifikasi penutupan dengan **membaca ulang buku
+posisi, bukan kode balasan**. Jangan pernah menulis kode di sini yang mempercayai
+retcode.
 
 ---
 
@@ -152,5 +196,5 @@ git bundle create quant-backup.bundle --all
 
 Satu file itu berisi seluruh riwayat repo. Pulihkan dengan
 `git clone quant-backup.bundle C:\Quant`. Simpan bersama `.env` (kalau slot vision
-dipakai) dan salinan `SemiMartiV10_GATED.set`. **Jangan pernah unggah bundle berisi
+dipakai) dan salinan `SemiMartiV10_LIVE.set`. **Jangan pernah unggah bundle berisi
 `.env` ke tempat publik.**

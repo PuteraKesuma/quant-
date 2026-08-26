@@ -273,6 +273,7 @@ class BasketTracker:
         self.peak_loss = 0.0
         self.last_floating = 0.0
         self.last_legs = 0
+        self.opens: list[float] = []        # waktu basket dibuka, 24 jam terakhir
 
     def poll(self) -> None:
         """Call periodically (heartbeat cadence is fine). Never raises."""
@@ -284,6 +285,7 @@ class BasketTracker:
 
             if legs and self.open_since is None:                  # basket opened
                 self.open_since = time.time()
+                self.opens.append(self.open_since)
                 self.peak_legs, self.peak_loss = legs, min(0.0, floating)
                 self._write({"event": "open", "legs": legs,
                              "symbol": mine[0].symbol,
@@ -316,7 +318,13 @@ class BasketTracker:
             logger.exception("basket journal write failed")
         logger.info(f"[basket] {rec['event']} {rec}")
 
+    def opens_24h(self) -> int:
+        cut = time.time() - 86400
+        self.opens = [t for t in self.opens if t >= cut]
+        return len(self.opens)
+
     def state(self) -> dict:
+        n = self.opens_24h()
         return {
             "open": self.open_since is not None,
             "open_minutes": (round((time.time() - self.open_since) / 60, 1)
@@ -324,7 +332,29 @@ class BasketTracker:
             "legs": self.last_legs if self.open_since else 0,
             "peak_legs": self.peak_legs,
             "peak_floating_loss": self.peak_loss,
+            "opens_24h": n,
+            "rate_alarm": n > BASKET_RATE_ALARM,
         }
+
+
+# Basket per 24 jam yang, kalau dilampaui, berarti ada rem yang lepas.
+#
+# KENAPA ANGKA INI ADA
+# Setelan live memakai InpRequireBreakConfirm=false, yang membuka posisi pada
+# sinyal MENTAH -- tiap tick, tanpa menunggu konfirmasi. Yang menahannya cuma
+# filter berita EA. Diukur di akun: 1,2 basket/hari. Diukur di Strategy Tester,
+# yang TIDAK punya kalender berita sehingga filternya mati: 28,3 basket/hari, dan
+# run tick-asli 8 minggu pada laju itu berakhir dengan akun habis (-$500.82,
+# PF 0.93, DD 100.4%).
+#
+# Jadi kalau kalender MT5 suatu hari tidak termuat -- dan itu gagal DIAM-DIAM --
+# EA melompat ke laju yang terbukti menghancurkan, tanpa satu pun pesan error.
+# Ambang 6 memberi jarak lebar dari laju normal (1-2) sekaligus jauh di bawah
+# laju berbahaya (28), jadi alarm palsu tidak mungkin dan alarm asli pasti kena.
+#
+# Ini PERINGATAN, bukan pemutus. Yang memutus tetap SL basket $75 di EA dan
+# BasketGuardian di -$110.
+BASKET_RATE_ALARM = 6
 
 
 # Backstop level. The EA's own basket stop is SEMI_MARTI_BASKET_SL_USD ($75); the
