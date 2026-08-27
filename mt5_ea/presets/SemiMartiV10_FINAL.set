@@ -1,0 +1,138 @@
+; SemiMartiV10_FINAL.set -- akun 106271896
+; Ditetapkan 2026-08-28 sebagai setelan final oleh pemilik akun.
+;
+; ACUAN, diverifikasi ulang dengan build EA yang SEKARANG (bukan angka warisan):
+;   rtfull  1 Jan - 18 Agu 2026, tick asli (61,3 juta tick), latensi 100 ms,
+;           deposit $1.000  ->  net +$724.08  PF 1.65  DD ekuitas 12.54%
+;           351 trade / 173 basket, menang 91.3%, maksimum 3 kaki
+;
+;   rt3b    1 Jun - 26 Agu 2026, deposit $500  ->  +$181.15  PF 1.39  DD 25.48%
+;
+; JANGAN pakai angka +$857.68 lagi. Itu dari run 25 Agustus dengan build LAMA
+; yang sudah tidak ada -- build tanpa pemulihan tiket, tanpa MyFloatingPnL, dan
+; tanpa AdoptDualEntry. Setelannya sama persis; yang berbeda kodenya. Selisih
+; $133.60 berasal dari perbaikan s_legs: dulu ketika kaki #1 tutup di TP $10,
+; floating turun mendadak dan trailing global menutup kaki #2 seketika; sekarang
+; puncak di-baseline ulang sehingga kaki #2 dibiarkan lanjut. Perbaikan itu benar
+; secara logika, tapi di data 2026 hasilnya sedikit lebih rendah.
+;
+; Struktur martingale di setelan ini terbukti jinak pada tiga run terpisah
+; (rt_2026, rt3b, confirm_true): maksimum 3 kaki, total 0.05 lot, dan lot 0.03
+; hanya muncul 5 kali dalam 7,5 bulan. Yang meledak pada 2026-08-27 (24 kaki,
+; 105 pending) adalah martingale DENGAN InpRequireBreakConfirm=false -- kombinasi
+; yang tidak ada di satu pun backtest. Jangan pernah matikan konfirmasi selama
+; martingale menyala.
+;InpRSIPeriod=250
+
+InpRSIPeriod=250
+InpMAPeriod=1
+
+InpRSILevelHigh=80.0
+
+InpRSILevelMid=50.0
+
+InpRSILevelLow=20.0
+
+InpMACDFast=5
+
+InpMACDSlow=13
+
+InpMACDSignal=9
+
+InpMACDNormalizePeriod=100
+
+InpMASource=0
+
+InpMASmaPeriod=21
+
+InpUseMartingale=true
+
+InpStartLot=0.01
+
+InpLotMultiplier=1.5
+
+InpMaxLayers=3
+
+InpOrderGapPips=25.0
+
+InpLayerStartBEP=3
+
+InpLayerBEPOffsetPips=1.0
+
+InpLayerOncePerSeries=true
+
+InpGlobalTP_USD=40
+
+InpGlobalSL_USD=75
+
+InpDailyTargetUSD=50.0
+
+InpUseTrailingUSD=true
+
+InpTrailingStartUSD=10.0
+
+InpTrailingStepUSD=2.0
+
+InpFirstEntry_TP_USD=10.0
+
+InpFirstEntry_Trail_USD=25.0
+
+InpLayer1DepthMult=1.5
+
+InpLayer2DepthMult=2.5
+
+InpLayer3DepthMult=4.0
+
+InpLimitExpiryMins=240
+
+InpStartHour=9
+
+InpEndHour=23
+
+InpUseNewsFilter=true
+
+InpNewsMinutesBefore=60
+
+InpNewsMinutesAfter=30
+
+InpNewsImpactLevel=2
+
+InpNewsCountry=USD
+
+InpRequireBreakConfirm=true
+
+InpConfirmMaxTicks=0
+
+InpShowIndicators=true
+
+InpDrawBars=50
+
+InpColorRSI=16748574
+
+InpColorSMA=42495
+
+InpColorMACDNorm=8721863
+
+InpEAName=VYG - MRM
+
+InpOrderComment=WA HANYA INI 081227853434
+
+InpMagicNumber=20250822
+
+InpDebug=false
+
+InpSignalMode=2
+
+InpUseRegimeGate=false
+
+InpGateTF=16385
+
+InpGateATRPeriod=16
+
+InpGateMultEntry=1.8
+
+InpGateMultTrend=3.8
+
+InpGateBars=400
+
+
