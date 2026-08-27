@@ -3,8 +3,8 @@
   "day": "2026-08-27",
   "paused": false,
   "reason": "",
-  "today_realized": 40.71,
-  "equity": 640.17,
+  "today_realized": -195.57,
+  "equity": 404.31,
   "daily_stop_at": -250.0,
   "maxloss_stop_at": 50.0,
   "paused_daily": false,
@@ -14,5 +14,5 @@
     920627,
     20250822
   ],
-  "updated": "2026-08-27T07:11:48.745425+00:00"
+  "updated": "2026-08-27T07:26:49.549073+00:00"
 }

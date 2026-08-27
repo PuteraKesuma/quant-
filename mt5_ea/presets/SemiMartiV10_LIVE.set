@@ -1,151 +1,146 @@
-; SemiMartiV10_LIVE.set -- setelan LIVE akun 106271896, dibuat 2026-08-26.
+; SemiMartiV10_LIVE.set -- akun 106271896.
 ;
-; SETIAP input EA ada di sini, termasuk yang nilainya sama dengan default.
-; Sebabnya konkret: mengganti file .ex5 membuat MT5 me-reset input ke default,
-; dan default InpGlobalSL_USD adalah 0 -- basket TANPA stop loss. Itu benar-benar
-; terjadi 2026-08-26 pukul 15:17 dan hanya ketahuan karena EA sekarang mencetak
-; input aktifnya ke log. Preset yang tidak lengkap akan membiarkan lubang itu
-; terbuka lagi. Jangan pernah hapus baris dari file ini.
+; 2026-08-27: DISAMAKAN PERSIS dengan SemiMartiV10_NOGATE.set, karena NOGATE
+; ternyata ADALAH konfigurasi yang menghasilkan semua angka backtest yang untung.
 ;
-; 2026-08-27 -- DIPERBAIKI. Versi kemarin SALAH dan ini koreksinya.
+; Bukti: tester_real1.ini / tester_fixver.ini / tester_rt_2026.ini hanya menuliskan
+; ENAM input (GlobalTP=40, GlobalSL=75, Debug=false, RegimeGate=false, Hours 9-23).
+; Sisanya diambil dari DEFAULT EA, dan default EA adalah:
+;     InpRequireBreakConfirm = true
+;     InpUseTrailingUSD      = true  (10/2)
+;     InpUseMartingale       = true
+;     InpUseNewsFilter       = true
+; Itu cocok baris per baris dengan NOGATE.set. Jadi angka-angka ini milik NOGATE:
+;     Juli 2026   +$136.43   PF 1.87   DD  7.67%
+;     2026 YTD    +$857.68   PF 1.78   DD 11.58%
+;     Jul-Agu     +$154.58   PF 1.50   DD 26.4%
 ;
-; Kemarin saya menyimpulkan trailing MENYALA karena basket +$15.70 tutup lewat
-; "Global trailing triggered" pada 15:18:31. Kesimpulan itu keliru: penutupan itu
-; terjadi SESUDAH EA ter-reset ke DEFAULT PABRIK pada 15:17:56 (mengganti .ex5
-; me-reset input), dan default InpUseTrailingUSD adalah true. Jadi yang terlihat
-; itu perilaku default EA, bukan setelan pemilik akun.
+; Akun demo TIDAK PERNAH menjalankan konfigurasi ini -- dia jalan dengan
+; confirm=false, trailing mati, martingale mati. Itulah sebabnya hasil live tidak
+; pernah nyambung dengan backtest, dan itu bukan karena strateginya berubah.
 ;
-; Bukti yang benar ada di CARA basket ditutup sebelum kita menyentuh apa pun:
+; Kesalahan saya 2026-08-26: merekonstruksi setelan lama dari log, padahal
+; jawabannya tertulis di file .ini. Rekonstruksi itu keliru dan membuang waktu
+; pemilik akun. Kalau ragu soal setelan sebuah backtest, BACA .ini-nya -- dan ingat
+; input yang tidak ditulis di sana diambil dari default EA, bukan dari preset.
 ;
-;   25 Agu 21:47  Global SL reached: -75.27
-;   25 Agu 22:11  Global TP reached: 40.11
-;   25 Agu 23:33  Global TP reached: 40.22
-;   26 Agu 14:23  Global TP reached: 40.07
-;   26 Agu 15:18  Global trailing triggered   <- PERTAMA KALI trailing pernah
-;                                                menutup, dan itu sudah setelah
-;                                                reset ke default
-;
-; Tiga basket sampai penuh ke TP $40. Itu mustahil kalau trailing menyala: dengan
-; 2 kaki 0.01 lot, naik dari +$10 ke +$40 menuntut emas bergerak $15 searah tanpa
-; pernah mundur $1 -- tiga kali berturut-turut. Maka trailing waktu itu MATI.
-;
-; UseMartingale dan UseNewsFilter tidak bisa dipastikan dari log (tidak ada
-; peristiwa yang membedakannya; semua basket berisi tepat 2 kaki, tidak pernah
-; ada layer). Keduanya diset false karena ITU yang disetel sendiri oleh pemilik
-; akun di dialog, tercatat pada 2026-08-26 17:53:45. Itu petunjuk terbaik yang
-; ada tentang niatnya, dan lebih dipercaya daripada tebakan saya.
-;
-; Jadi isi file ini: confirm FALSE + trailing OFF + martingale OFF + news OFF +
-; TP40/SL75 + gate OFF.
-;
-; CATATAN yang harus tetap terbaca oleh siapa pun yang membuka file ini:
-; confirm=false adalah varian yang KALAH telak di uji tick asli, periode sama,
-; semua input sama kecuali satu tombol:
-;
-;                    confirm=false        confirm=true
-;   net                  -$500.82           +$154.58
-;   profit factor            0.93               1.50
-;   trade                   3.226                 94
-;   DD ekuitas            100.4% (habis)       26.4%
-;
-; Bukti untung hari ini berdiri di atas DUA basket. Uji di atas berdiri di atas
-; 1.613. Pemilik akun mengetahui perbandingan ini dan tetap memilih setelan ini;
-; itu haknya, dan keputusan itu dicatat di sini apa adanya.
-;
-; Yang menahan setelan ini dari perilaku 28 basket/hari adalah filter berita --
-; mekanisme yang tidak muncul di backtest mana pun (Strategy Tester mengabaikan
-; kalender; dibuktikan: run news=true dan news=false menghasilkan angka identik
-; sen per sen) dan gagal diam-diam kalau kalender tidak termuat. Kalau suatu hari
-; jumlah basket melonjak jauh di atas ~1-2 per hari, ITU tandanya, dan penjaga
-; Python di -$110 adalah jaring terakhirnya.
-;
-; -- pembanding, adu langsung tick asli 1 Jul - 26 Agu 2026:
-;
-;                    confirm=false        confirm=true
-;   net                  -$500.82           +$154.58
-;   profit factor            0.93               1.50
-;   trade                   3.226                 94
-;   DD ekuitas            100.4% (habis)       26.4%
-;
-; Yang menentukan bukan cuma angkanya, tapi FREKUENSInya:
-;   confirm=true  di tester : 0,8 basket/hari
-;   AKUN LIVE               : 1,2 basket/hari
-;   confirm=false di tester : 28,3 basket/hari
-; Akun bertingkah seperti true, bukan false. Berarti ada rem lain -- filter
-; berita, yang TIDAK bisa ditiru Strategy Tester (dibuktikan: run news=true dan
-; news=false menghasilkan angka identik sen per sen). Jadi dengan false, satu-
-; satunya yang mencegah perilaku 28 basket/hari adalah mekanisme yang tidak
-; pernah terukur dan bisa gagal diam-diam. Di akun real itu risiko yang tidak
-; perlu diambil.
-;
-;   InpRequireBreakConfirm=true   -> breakout, pullback, lalu re-break. Ini yang
-;                                    diuji dan menghasilkan +$154.58.
-;   InpUseNewsFilter=true         -> DIPILIH pemilik akun (setara NOGATE.set).
-;                                    Tester mengabaikan kalender, jadi live akan
-;                                    trading LEBIH JARANG dari 0,8 basket/hari
-;                                    yang diuji. Edge per-trade tetap yang diuji;
-;                                    yang berbeda jumlah trade-nya.
-;                                    Ini AMAN dengan confirm=true, dan itu poin
-;                                    yang berubah: waktu confirm=false filter ini
-;                                    PENOPANG -- satu-satunya penahan 28 basket/
-;                                    hari, dan gagalnya berarti akun habis.
-;                                    Dengan confirm=true strateginya sudah untung
-;                                    sendiri (PF 1.50), jadi filter ini cuma rem
-;                                    tambahan: gagal termuat = trading agak lebih
-;                                    sering, bukan bencana.
-;   InpUseRegimeGate=false        -> gate dimatikan (keputusan 2026-08-25).
-;   InpDebug=false                -> default EA true dan membanjiri log.
-;   InpShowIndicators=false       -> objek chart tidak perlu di VPS.
-;
+; Indicator Parameters
 InpRSIPeriod=250
+
 InpMAPeriod=1
+
 InpRSILevelHigh=80.0
+
 InpRSILevelMid=50.0
+
 InpRSILevelLow=20.0
+
 InpMACDFast=5
+
 InpMACDSlow=13
+
 InpMACDSignal=9
+
 InpMACDNormalizePeriod=100
+
 InpMASource=0
+
 InpMASmaPeriod=21
-InpUseMartingale=false
+
+; Trading Parameters
+InpUseMartingale=true
+
 InpStartLot=0.01
+
 InpLotMultiplier=1.5
+
 InpMaxLayers=3
+
 InpOrderGapPips=25.0
+
 InpLayerStartBEP=3
+
 InpLayerBEPOffsetPips=1.0
+
 InpLayerOncePerSeries=true
-InpGlobalTP_USD=40.0
-InpGlobalSL_USD=75.0
+
+InpGlobalTP_USD=40
+
+InpGlobalSL_USD=75
+
 InpDailyTargetUSD=50.0
-InpUseTrailingUSD=false
+
+InpUseTrailingUSD=true
+
 InpTrailingStartUSD=10.0
+
 InpTrailingStepUSD=2.0
+
+; First Signal Dual Entry
 InpFirstEntry_TP_USD=10.0
+
 InpFirstEntry_Trail_USD=25.0
+
+; Deep Entry (Limit Order Layers)
 InpLayer1DepthMult=1.5
+
 InpLayer2DepthMult=2.5
+
 InpLayer3DepthMult=4.0
+
 InpLimitExpiryMins=240
+
+; Time Filter
 InpStartHour=9
+
 InpEndHour=23
-InpUseNewsFilter=false
+
+; News Filter (MT5 Calendar)
+InpUseNewsFilter=true
+
 InpNewsMinutesBefore=60
+
 InpNewsMinutesAfter=30
+
 InpNewsImpactLevel=2
+
 InpNewsCountry=USD
-InpRequireBreakConfirm=false
+
+; Confirmation
+InpRequireBreakConfirm=true
+
 InpConfirmMaxTicks=0
-InpShowIndicators=false
+
+; UI
+InpShowIndicators=true
+
 InpDrawBars=50
+
+InpColorRSI=16748574
+
+InpColorSMA=42495
+
+InpColorMACDNorm=8721863
+
 InpEAName=VYG - MRM
+
 InpOrderComment=WA HANYA INI 081227853434
+
 InpMagicNumber=20250822
+
 InpDebug=false
+
 InpSignalMode=2
+
 InpUseRegimeGate=false
+
+InpGateTF=16385
+
 InpGateATRPeriod=16
+
 InpGateMultEntry=1.8
+
 InpGateMultTrend=3.8
+
 InpGateBars=400
+
