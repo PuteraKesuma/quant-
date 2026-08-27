@@ -1,28 +1,29 @@
-; SemiMartiV10_LIVE.set -- akun 106271896.
+; SemiMartiV10_LIVE.set -- akun 106271896
 ;
-; 2026-08-27: DISAMAKAN PERSIS dengan SemiMartiV10_NOGATE.set, karena NOGATE
-; ternyata ADALAH konfigurasi yang menghasilkan semua angka backtest yang untung.
+; 2026-08-27: disamakan dengan SemiMartiV10_NOGATE.set atas permintaan pemilik
+; akun, yang memilih konfigurasi run rt_2026.
 ;
-; Bukti: tester_real1.ini / tester_fixver.ini / tester_rt_2026.ini hanya menuliskan
-; ENAM input (GlobalTP=40, GlobalSL=75, Debug=false, RegimeGate=false, Hours 9-23).
-; Sisanya diambil dari DEFAULT EA, dan default EA adalah:
-;     InpRequireBreakConfirm = true
-;     InpUseTrailingUSD      = true  (10/2)
-;     InpUseMartingale       = true
-;     InpUseNewsFilter       = true
-; Itu cocok baris per baris dengan NOGATE.set. Jadi angka-angka ini milik NOGATE:
-;     Juli 2026   +$136.43   PF 1.87   DD  7.67%
-;     2026 YTD    +$857.68   PF 1.78   DD 11.58%
-;     Jul-Agu     +$154.58   PF 1.50   DD 26.4%
+; rt_2026 = tick asli (Model 4), latensi 100 ms, 1 Jan - 18 Agu 2026, deposit
+; $1.000:  net +$857.68  PF 1.78  351 trade  DD ekuitas 11.58%
 ;
-; Akun demo TIDAK PERNAH menjalankan konfigurasi ini -- dia jalan dengan
-; confirm=false, trailing mati, martingale mati. Itulah sebabnya hasil live tidak
-; pernah nyambung dengan backtest, dan itu bukan karena strateginya berubah.
+; Setelan efektifnya diturunkan ketat, bukan dikira-kira: nilai yang DITULIS di
+; tester_rt_2026.ini (TP=40, SL=75, RegimeGate=false, Hours 9-23) ditambah
+; DEFAULT EA untuk sisanya, dibaca dari deklarasi input di .mq5. Hasilnya cocok
+; pada 22 input kunci dengan NOGATE.set.
 ;
-; Kesalahan saya 2026-08-26: merekonstruksi setelan lama dari log, padahal
-; jawabannya tertulis di file .ini. Rekonstruksi itu keliru dan membuang waktu
-; pemilik akun. Kalau ragu soal setelan sebuah backtest, BACA .ini-nya -- dan ingat
-; input yang tidak ditulis di sana diambil dari default EA, bukan dari preset.
+; CATATAN PENTING soal martingale, supaya tidak salah dibaca kemudian:
+; InpUseMartingale=true di sini. Pada 2026-08-27 martingale menyala di demo dan
+; merugikan $209.76 -- tapi itu dijalankan bersama InpRequireBreakConfirm=FALSE,
+; sehingga entry terpicu pada sinyal mentah terus-menerus dan tiap basket
+; menumpuk layer (satu basket mencapai 24 kaki, 105 pending order menumpuk).
+; Kombinasi martingale-ON + confirm-OFF itu TIDAK ADA di satu pun dari 43 report
+; backtest. rt_2026 memakai confirm=TRUE, yang menekan jumlah entry ke 351 dalam
+; 7,5 bulan dan memberi martingale ruang. Keduanya bukan strategi yang sama.
+;
+; Angka +$948.47 (report TP40_SL75) sengaja TIDAK dipakai sebagai acuan: itu EA
+; lama SemiMartiV10 dengan Model=0 tanpa latensi. EA lama tidak punya pemulihan
+; tiket, jadi Dual Entry tidak akan pernah bekerja di broker ini yang selalu
+; membalas retcode 0. Angka jujur untuk konfigurasi ini adalah +$857.68.
 ;
 ; Indicator Parameters
 InpRSIPeriod=250
@@ -48,7 +49,7 @@ InpMASource=0
 InpMASmaPeriod=21
 
 ; Trading Parameters
-InpUseMartingale=false
+InpUseMartingale=true
 
 InpStartLot=0.01
 
@@ -96,7 +97,7 @@ InpStartHour=9
 InpEndHour=23
 
 ; News Filter (MT5 Calendar)
-InpUseNewsFilter=false
+InpUseNewsFilter=true
 
 InpNewsMinutesBefore=60
 
@@ -107,12 +108,12 @@ InpNewsImpactLevel=2
 InpNewsCountry=USD
 
 ; Confirmation
-InpRequireBreakConfirm=false
+InpRequireBreakConfirm=true
 
 InpConfirmMaxTicks=0
 
 ; UI
-InpShowIndicators=false
+InpShowIndicators=true
 
 InpDrawBars=50
 
@@ -143,6 +144,4 @@ InpGateMultEntry=1.8
 InpGateMultTrend=3.8
 
 InpGateBars=400
-
-
 
