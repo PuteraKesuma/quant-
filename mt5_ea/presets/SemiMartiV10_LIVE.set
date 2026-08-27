@@ -7,16 +7,36 @@
 ; input aktifnya ke log. Preset yang tidak lengkap akan membiarkan lubang itu
 ; terbuka lagi. Jangan pernah hapus baris dari file ini.
 ;
-; 2026-08-26 MALAM -- DIKEMBALIKAN ke setelan yang menghasilkan untung hari ini,
-; atas permintaan pemilik akun. Direkonstruksi dari log, bukan dari ingatan:
+; 2026-08-27 -- DIPERBAIKI. Versi kemarin SALAH dan ini koreksinya.
 ;
-;   basket +$39.73  tutup: "Global TP reached: 40.07 >= 40.00"
-;   basket +$15.70  tutup: "Global trailing triggered: peak 18.19 -> now 15.83
-;                           (drop 2.36 >= 2.00)"
+; Kemarin saya menyimpulkan trailing MENYALA karena basket +$15.70 tutup lewat
+; "Global trailing triggered" pada 15:18:31. Kesimpulan itu keliru: penutupan itu
+; terjadi SESUDAH EA ter-reset ke DEFAULT PABRIK pada 15:17:56 (mengganti .ex5
+; me-reset input), dan default InpUseTrailingUSD adalah true. Jadi yang terlihat
+; itu perilaku default EA, bukan setelan pemilik akun.
 ;
-; Baris kedua itu buktinya trailing MENYALA di $10/$2 saat itu. Jadi setelan yang
-; untung = confirm FALSE + trailing ON + martingale ON + news ON + TP40/SL75 +
-; gate OFF. Itulah isi file ini.
+; Bukti yang benar ada di CARA basket ditutup sebelum kita menyentuh apa pun:
+;
+;   25 Agu 21:47  Global SL reached: -75.27
+;   25 Agu 22:11  Global TP reached: 40.11
+;   25 Agu 23:33  Global TP reached: 40.22
+;   26 Agu 14:23  Global TP reached: 40.07
+;   26 Agu 15:18  Global trailing triggered   <- PERTAMA KALI trailing pernah
+;                                                menutup, dan itu sudah setelah
+;                                                reset ke default
+;
+; Tiga basket sampai penuh ke TP $40. Itu mustahil kalau trailing menyala: dengan
+; 2 kaki 0.01 lot, naik dari +$10 ke +$40 menuntut emas bergerak $15 searah tanpa
+; pernah mundur $1 -- tiga kali berturut-turut. Maka trailing waktu itu MATI.
+;
+; UseMartingale dan UseNewsFilter tidak bisa dipastikan dari log (tidak ada
+; peristiwa yang membedakannya; semua basket berisi tepat 2 kaki, tidak pernah
+; ada layer). Keduanya diset false karena ITU yang disetel sendiri oleh pemilik
+; akun di dialog, tercatat pada 2026-08-26 17:53:45. Itu petunjuk terbaik yang
+; ada tentang niatnya, dan lebih dipercaya daripada tebakan saya.
+;
+; Jadi isi file ini: confirm FALSE + trailing OFF + martingale OFF + news OFF +
+; TP40/SL75 + gate OFF.
 ;
 ; CATATAN yang harus tetap terbaca oleh siapa pun yang membuka file ini:
 ; confirm=false adalah varian yang KALAH telak di uji tick asli, periode sama,
@@ -88,7 +108,7 @@ InpMACDSignal=9
 InpMACDNormalizePeriod=100
 InpMASource=0
 InpMASmaPeriod=21
-InpUseMartingale=true
+InpUseMartingale=false
 InpStartLot=0.01
 InpLotMultiplier=1.5
 InpMaxLayers=3
@@ -99,7 +119,7 @@ InpLayerOncePerSeries=true
 InpGlobalTP_USD=40.0
 InpGlobalSL_USD=75.0
 InpDailyTargetUSD=50.0
-InpUseTrailingUSD=true
+InpUseTrailingUSD=false
 InpTrailingStartUSD=10.0
 InpTrailingStepUSD=2.0
 InpFirstEntry_TP_USD=10.0
@@ -110,7 +130,7 @@ InpLayer3DepthMult=4.0
 InpLimitExpiryMins=240
 InpStartHour=9
 InpEndHour=23
-InpUseNewsFilter=true
+InpUseNewsFilter=false
 InpNewsMinutesBefore=60
 InpNewsMinutesAfter=30
 InpNewsImpactLevel=2
