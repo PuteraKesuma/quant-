@@ -70,7 +70,7 @@ InpGlobalSL_USD=75
 
 InpDailyTargetUSD=50.0
 
-InpUseTrailingUSD=false
+InpUseTrailingUSD=true
 
 InpTrailingStartUSD=10.0
 
@@ -143,5 +143,6 @@ InpGateMultEntry=1.8
 InpGateMultTrend=3.8
 
 InpGateBars=400
+
 
 
