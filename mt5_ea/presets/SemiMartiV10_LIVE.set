@@ -48,7 +48,7 @@ InpMASource=0
 InpMASmaPeriod=21
 
 ; Trading Parameters
-InpUseMartingale=true
+InpUseMartingale=false
 
 InpStartLot=0.01
 
@@ -70,7 +70,7 @@ InpGlobalSL_USD=75
 
 InpDailyTargetUSD=50.0
 
-InpUseTrailingUSD=true
+InpUseTrailingUSD=false
 
 InpTrailingStartUSD=10.0
 
@@ -96,7 +96,7 @@ InpStartHour=9
 InpEndHour=23
 
 ; News Filter (MT5 Calendar)
-InpUseNewsFilter=true
+InpUseNewsFilter=false
 
 InpNewsMinutesBefore=60
 
@@ -107,12 +107,12 @@ InpNewsImpactLevel=2
 InpNewsCountry=USD
 
 ; Confirmation
-InpRequireBreakConfirm=true
+InpRequireBreakConfirm=false
 
 InpConfirmMaxTicks=0
 
 ; UI
-InpShowIndicators=true
+InpShowIndicators=false
 
 InpDrawBars=50
 
@@ -143,4 +143,5 @@ InpGateMultEntry=1.8
 InpGateMultTrend=3.8
 
 InpGateBars=400
+
 
