@@ -49,8 +49,44 @@ SEMI_MARTI_MAGIC = 20250822
 _JOURNAL = Path(r"C:\Quant\_MONITOR\basket_journal.jsonl")
 
 
+_MT5_READY = False
+
+
 def _mt5():
+    """MT5, guaranteed attached to the LIVE terminal.
+
+    This used to only import the module and rely on someone else having called
+    initialize() -- in practice DataProvider, the first time a strategy asked for
+    bars. That dependency broke the moment the last strategy slot was disabled on
+    2026-08-28: with no slot, nothing fetched bars, nothing initialised MT5, and
+    every call here returned None. /health went 503, the watchdog restarted the
+    brain, and it happened again -- a restart loop. BasketGuardian lives in this
+    module and enforces Semi Marti's only real basket stop, so a blind book module
+    is a safety failure, not an inconvenience.
+
+    The path is explicit for a second reason found the same day: this machine runs
+    a portable terminal in mt5_tester/ for backtests, and a bare initialize()
+    attaches to whichever it likes. Attaching to the tester makes symbol_info
+    return None. If the live terminal is not the one we get, fail loudly rather
+    than operate through the wrong terminal.
+    """
+    global _MT5_READY
     import MetaTrader5 as mt5
+    if not _MT5_READY:
+        try:
+            from ..fetch.base_fetcher import load_config
+            path = ((load_config().get("live") or {}).get("mt5_terminal_path")
+                    or r"C:\Program Files\MetaTrader 5\terminal64.exe")
+        except Exception:                                    # noqa: BLE001
+            path = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+        if mt5.terminal_info() is None and not mt5.initialize(path=path):
+            raise RuntimeError(f"MT5 initialize(path={path!r}) failed: "
+                               f"{mt5.last_error()}")
+        ti = mt5.terminal_info()
+        if ti is not None and ti.path and "mt5_tester" in ti.path.replace("/", "\\"):
+            raise RuntimeError(f"MT5 attached to the BACKTEST terminal ({ti.path}); "
+                               f"refusing. Expected {path}")
+        _MT5_READY = True
     return mt5
 
 

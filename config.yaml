@@ -106,6 +106,15 @@ live:
   # FBS = UTC+3 in summer (DST), UTC+2 in winter. null = auto-detect from a fresh
   # tick; set an integer to force it. Server warns if the live offset differs.
   mt5_server_utc_offset_hours: null
+  # Terminal MT5 mana yang dipakai brain. WAJIB eksplisit: mesin ini menjalankan
+  # terminal kedua yang portable di mt5_tester\ untuk backtest, dan
+  # mt5.initialize() TANPA path menempel ke terminal mana saja yang kebetulan
+  # jalan. Pada 2026-08-28 brain di-restart saat backtest berlangsung, menempel ke
+  # terminal TESTER, dan setiap symbol_info mengembalikan None -> /health 503 ->
+  # watchdog restart -> menempel ke tester lagi. Loop itu hanya berhenti kalau
+  # backtestnya selesai. Kalau terminal ini tidak jalan, brain GAGAL dengan jelas
+  # dan sengaja TIDAK mencari terminal pengganti.
+  mt5_terminal_path: "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
   poll_seconds: 1            # EA poll cadence (used to judge EA "connected" in heartbeat)
   heartbeat_seconds: 15      # server logs a heartbeat line at this cadence
   # Each entry is one independent strategy "slot". Multiple slots (even on the
@@ -362,11 +371,33 @@ live:
     # jurnal.md for the full log if this needs re-running after a future EA change.
 
     - name: eterna_xau
-      enabled: true         # 2026-08-07 SHADOW: shadow-check lolos (feed FBS vs Dukascopy
+      enabled: false        # 2026-08-28 DIMATIKAN atas keputusan pemilik akun, yang ingin
+                            #   fokus ke Semi Marti saja.
+                            #
+                            #   Hasil live: 5 trade, -$74.33.
+                            #     12 Agu  -$3.28   flip berlawanan
+                            #     13 Agu  -$0.92   flip berlawanan (3 menit)
+                            #     20 Agu  +$2.19   ditutup bug restart brain, TP masih jauh
+                            #     27 Agu -$35.42   flip berlawanan
+                            #     28 Agu -$36.90   flip berlawanan
+                            #
+                            #   JANGAN baca ini sebagai "eterna terbukti rugi". Lima trade
+                            #   tidak membuktikan apa pun untuk strategi yang profitnya
+                            #   sangat terkonsentrasi (10 trade terbaik = 85% profit; median
+                            #   trade RUGI $4,67; win rate cuma 37%). Backtest 6 tahun:
+                            #   +$2.790, 6/6 tahun hijau. Jul-Agu 2026 tick asli: +$162.97
+                            #   dari 14 trade.
+                            #
+                            #   Dan dia tidak pernah dapat kesempatan yang adil: brain baru
+                            #   hidup 21 Agu, lalu max_combined_risk=105 memblokir SETIAP
+                            #   sinyalnya 21-26 Agu (jatah $30 vs stop struktur $40-$65).
+                            #   Praktis hanya 27-28 Agu dia berjalan normal.
+                            #
+                            #   Menghidupkan lagi: enabled: true + restart brain. Tidak ada
+                            #   yang perlu diubah selain baris ini; pagar $145 sudah benar.
+                            #
+                            #   2026-08-07 SHADOW: shadow-check lolos (feed FBS vs Dukascopy
                             #   sepakat 99,7%, korelasi 0.999973, offset server +3h benar).
-                            #   EA BELUM di-attach ke chart -> brain menghitung, tak ada
-                            #   yang mengeksekusi. Attach EA hanya setelah beberapa hari
-                            #   sinyal live terlihat wajar.
       type: eterna
       symbol: XAUUSD
       lot: 0.01

@@ -20,10 +20,35 @@ class DataProvider:
         self._offset_hours: int | None = None   # cached broker server->UTC offset
 
     def _ensure_mt5(self):
+        """Attach to the LIVE terminal explicitly, never 'whichever is running'.
+
+        `mt5.initialize()` with no path attaches to some running terminal, and the
+        choice is not ours. This machine also runs a second, portable terminal in
+        `mt5_tester/` for backtests. On 2026-08-28 the brain was restarted while a
+        backtest was in progress, attached to the TESTER, and every symbol_info
+        call came back None -- /health returned 503, the watchdog restarted it, and
+        it attached to the tester again: a restart loop that only ends when the
+        backtest does. With Semi Marti's basket stop enforced from the brain
+        (BasketGuardian), a brain that cannot see MT5 is not a cosmetic problem.
+
+        The path comes from config (`live.mt5_terminal_path`); the default is the
+        standard install. If that exact terminal is not running, we do NOT fall
+        back to any other one -- silently trading through the wrong terminal is
+        worse than failing loudly.
+        """
         import MetaTrader5 as mt5
         if not self._initialized:
-            if not mt5.initialize():
-                raise RuntimeError(f"MT5 initialize() failed: {mt5.last_error()}")
+            path = (self.cfg.get("live", {}) or {}).get(
+                "mt5_terminal_path") or r"C:\Program Files\MetaTrader 5\terminal64.exe"
+            if not mt5.initialize(path=path):
+                raise RuntimeError(
+                    f"MT5 initialize(path={path!r}) failed: {mt5.last_error()}")
+            ti = mt5.terminal_info()
+            if ti is not None and ti.path and "mt5_tester" in ti.path.replace("/", "\\"):
+                mt5.shutdown()
+                raise RuntimeError(
+                    f"MT5 attached to the BACKTEST terminal ({ti.path}); refusing. "
+                    f"Expected {path}")
             self._initialized = True
         return mt5
 

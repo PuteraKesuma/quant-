@@ -88,8 +88,15 @@ def c_config():
     on = [s for s in cfg["live"]["strategies"] if s.get("enabled")]
     names = ", ".join(s["name"] for s in on) or "(tidak ada)"
     if not on:
-        check("Slot brain aktif", FAIL, "tidak ada slot enabled",
-              "Aktifkan minimal satu slot di config.yaml")
+        # Nol slot BUKAN kerusakan. Sejak 2026-08-28 pemilik akun mematikan eterna
+        # untuk fokus ke Semi Marti, dan Semi Marti adalah EA mandiri yang tidak
+        # butuh brain untuk sinyal. Brain tetap WAJIB jalan: BasketGuardian ada di
+        # sana, dan itu satu-satunya penegak batas kerugian Semi Marti yang hidup
+        # di luar EA. Dulu ini FAIL, sehingga keadaan yang benar terbaca sebagai
+        # rusak -- dan itu melatih orang mengabaikan hasil verifikasi.
+        check("Slot brain aktif", WARN, "tidak ada slot enabled (eterna dimatikan)",
+              "Normal bila hanya Semi Marti yang dipakai. Brain tetap perlu jalan "
+              "untuk penjaga basket. Hidupkan lagi: enabled: true di config.yaml")
     else:
         check("Slot brain aktif", OK, names)
 
