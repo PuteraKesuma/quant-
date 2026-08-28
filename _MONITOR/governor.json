@@ -1,18 +1,18 @@
 {
   "mode": "rules",
-  "day": "2026-08-27",
-  "paused": true,
-  "reason": "daily",
-  "today_realized": -302.48,
-  "equity": 297.5,
+  "day": "2026-08-28",
+  "paused": false,
+  "reason": "",
+  "today_realized": 0.0,
+  "equity": 285.64,
   "daily_stop_at": -250.0,
   "maxloss_stop_at": 50.0,
-  "paused_daily": true,
+  "paused_daily": false,
   "paused_maxloss": false,
   "max_risk_per_trade": 70.0,
   "magics": [
     920627,
     20250822
   ],
-  "updated": "2026-08-27T22:14:16.842935+00:00"
+  "updated": "2026-08-28T03:27:21.067136+00:00"
 }

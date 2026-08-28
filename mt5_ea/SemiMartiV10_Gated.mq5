@@ -55,6 +55,21 @@ input double InpTrailingStepUSD  = 2.0;
 input group "First Signal Dual Entry";
 input double InpFirstEntry_TP_USD      = 10.0;  // TP for position #1 (fixed $10)
 input double InpFirstEntry_Trail_USD   = 25.0;  // Trailing target for position #2 ($25)
+// Berapa posisi dibuka pada sinyal pertama. 2 = perilaku selama ini (Dual Entry).
+// 1 = buka satu saja, biarkan layer martingale yang menambah kaki kedua NANTI di
+// harga yang lebih baik.
+//
+// DEFAULT 2 -- jangan diubah tanpa sengaja. Seluruh angka acuan yang dipakai
+// proyek ini (rtfull +$724.08 dsb) memakai 2.
+//
+// Gagasan di balik 1 (usulan pemilik akun 2026-08-28): 91,3% basket menang, jadi
+// memotong ukuran awal memotong keuntungan di mayoritas kasus dan hanya menolong
+// di 8,7% yang kalah -- secara hitungan kasar itu MEMPERKECIL edge. Dua hal yang
+// bisa membalikkannya, dan hanya backtest yang bisa menjawabnya: kaki kedua masuk
+// di harga yang lebih baik (bukan di harga yang sama), dan SL basket $75 butuh
+// gerakan dua kali lebih jauh untuk tersentuh dengan satu lot, sehingga basket
+// punya lebih banyak ruang untuk berbalik.
+input int    InpFirstEntryLegs         = 2;     // 1 atau 2 posisi pada sinyal pertama
 
 input group "Deep Entry (Limit Order Layers)";
 // Depth multiplier per layer — applied to InpOrderGapPips as the base unit.
@@ -1320,13 +1335,25 @@ void TryEnter(const ENUM_ORDER_TYPE orderType)
          PrintFormat("DUAL ENTRY: position #1 ticket=%I64u lot=%.2f TP=$%.2f", t1, lot, InpFirstEntry_TP_USD);
         }
 
-      // Open position #2 (trailing)
-      ulong t2 = OpenOrderReturnTicket(orderType, lot);
-      if(t2 != 0)
+      // Open position #2 (trailing) -- dilewati bila InpFirstEntryLegs=1.
+      //
+      // Dengan satu kaki, posisi itu memegang peran #1 (TP tetap $10) dan
+      // g_trail_ticket sengaja dibiarkan 0: tidak ada kaki #2 untuk di-trail
+      // sampai layer martingale mengisinya nanti. Basket tetap dijaga TP $40,
+      // SL $75, dan trailing global seperti biasa -- tidak ada pengaman yang
+      // hilang, hanya ukuran awalnya yang separuh.
+      if(InpFirstEntryLegs >= 2)
         {
-         g_trail_ticket = t2;
-         PrintFormat("DUAL ENTRY: position #2 ticket=%I64u lot=%.2f trail_target=$%.2f", t2, lot, InpFirstEntry_Trail_USD);
+         ulong t2 = OpenOrderReturnTicket(orderType, lot);
+         if(t2 != 0)
+           {
+            g_trail_ticket = t2;
+            PrintFormat("DUAL ENTRY: position #2 ticket=%I64u lot=%.2f trail_target=$%.2f", t2, lot, InpFirstEntry_Trail_USD);
+           }
         }
+      else
+         PrintFormat("ENTRY TUNGGAL: InpFirstEntryLegs=%d -- kaki #2 dilewati, "
+                     "layer martingale yang akan menambahnya", InpFirstEntryLegs);
 
       return;
      }
@@ -1710,8 +1737,8 @@ void DumpInputs()
                InpMACDFast, InpMACDSlow, InpMACDSignal, InpRSIPeriod, InpMAPeriod);
    PrintFormat("BASKET  : TP=$%.2f SL=$%.2f DailyTarget=$%.2f",
                InpGlobalTP_USD, InpGlobalSL_USD, InpDailyTargetUSD);
-   PrintFormat("DUAL    : TP1=$%.2f Trail2=$%.2f",
-               InpFirstEntry_TP_USD, InpFirstEntry_Trail_USD);
+   PrintFormat("DUAL    : Legs=%d TP1=$%.2f Trail2=$%.2f",
+               InpFirstEntryLegs, InpFirstEntry_TP_USD, InpFirstEntry_Trail_USD);
    PrintFormat("TRAIL   : Use=%s Start=$%.2f Step=$%.2f",
                InpUseTrailingUSD ? "true" : "false",
                InpTrailingStartUSD, InpTrailingStepUSD);
