@@ -688,9 +688,23 @@ governor:
   # baskets in 2026 opened while eterna was already holding. Closing that side
   # needs a change on the EA, not here.
   max_combined_risk: 145
-  daily_loss_usd: 250                # loose on demo (won't stop a normal forward-test day)
+  # 2026-08-28 DISKALA ULANG untuk akun REAL 28908348 (FBS-Real, saldo $466).
+  # Nilai lama ($250 / $50) dipasang untuk demo dan praktis tidak menahan apa pun
+  # di akun sebesar ini: $250 = 54% saldo, dan lantai $50 baru bertindak setelah
+  # rugi 89%. Pengaman yang hanya menyala setelah kehancuran bukan pengaman.
+  #
+  # Sekarang hanya Semi Marti yang jalan (eterna dimatikan), jadi acuannya:
+  #   SL basket        -$75   (satu kekalahan normal, terjadi ~1 tiap 11 basket)
+  #   penjaga Python  -$110   (jaring kalau EA gagal menegakkan SL-nya sendiri)
+  #   DD teruji       12.95%  = ~$60 pada saldo ini
+  daily_loss_usd: 150                # 32% saldo = dua SL basket dalam sehari; laju
+                                     # normal 0,78 basket/hari, jadi ini hari yang
+                                     # benar-benar luar biasa, bukan hari buruk biasa
   daily_stop_buffer: 0
-  maxloss_floor: 50                  # only flatten if the demo is nearly wiped (equity -> $50+buffer)
+  maxloss_floor: 330                 # ekuitas turun ke sini (-29%) -> ratakan semua.
+                                     # Jauh di luar drawdown teruji 12.95% supaya
+                                     # tidak memotong pemulihan yang wajar, tapi
+                                     # masih jauh sebelum akun habis.
   maxloss_buffer: 0
   poll_seconds: 60
   # --- profit ('bersyukur') mode fields, unused when mode=rules ---

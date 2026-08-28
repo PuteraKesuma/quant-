@@ -5,8 +5,8 @@
   "reason": "",
   "today_realized": 0.0,
   "equity": 466.0,
-  "daily_stop_at": -250.0,
-  "maxloss_stop_at": 50.0,
+  "daily_stop_at": -150.0,
+  "maxloss_stop_at": 330.0,
   "paused_daily": false,
   "paused_maxloss": false,
   "max_risk_per_trade": 70.0,
@@ -14,5 +14,5 @@
     920627,
     20250822
   ],
-  "updated": "2026-08-28T12:18:31.336494+00:00"
+  "updated": "2026-08-28T12:26:22.933447+00:00"
 }
