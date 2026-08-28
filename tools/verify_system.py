@@ -305,9 +305,17 @@ def c_brain():
     check("Brain (/health)", OK if h.get("status") == "ok" else WARN,
           f"status={h.get('status')} | uptime {h.get('uptime_seconds', 0) // 60} menit")
 
+    # SignalExecutor hanya dibutuhkan kalau ada slot brain yang aktif. Sejak eterna
+    # dimatikan (2026-08-28) EA itu sengaja dilepas dari chart, dan melaporkannya
+    # sebagai GAGAL menandai keadaan yang benar sebagai rusak -- persis cara melatih
+    # orang mengabaikan hasil verifikasi.
     ea = (h.get("ea") or {}).get("XAUUSD") or {}
+    slots_on = len(h.get("strategies") or [])
     if ea.get("connected"):
         check("SignalExecutor polling", OK, f"terakhir {ea.get('seconds_ago')} detik lalu")
+    elif slots_on == 0:
+        check("SignalExecutor polling", OK,
+              "tidak dipakai (tidak ada slot brain aktif)")
     else:
         check("SignalExecutor polling", FAIL, "EA tidak menghubungi brain",
               "Pasang SignalExecutor di chart XAUUSD dan nyalakan Algo Trading")
