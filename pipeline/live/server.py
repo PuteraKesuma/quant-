@@ -19,6 +19,7 @@ from loguru import logger
 from ..fetch.base_fetcher import load_config
 from .book import BasketGuardian, BasketTracker, exposure, probe_mt5, risk_snapshot
 from .contracts import SignalSet
+from .regime import RegimeWatcher
 from .signal import SignalEngine
 
 _cfg = load_config()
@@ -32,6 +33,7 @@ _start = time.time()
 _last_poll: dict[str, float] = {}   # symbol -> monotonic time of last EA poll
 _basket = BasketTracker()           # journals the autonomous Semi Marti EA's baskets
 _guardian = BasketGuardian()        # last-resort stop; see BasketGuardian docstring
+_regime = RegimeWatcher()           # mencatat regime pasar; MENGAMATI SAJA
 _MT5_GRACE_SECONDS = 90             # boot window before a failed MT5 probe means 503
 _last_risk_key: tuple = ()          # dedupe repeated risk warnings in the heartbeat
 _rate_warned = False                # dedupe the basket-rate alarm
@@ -55,6 +57,14 @@ async def _heartbeat_loop():
         # happen if the EA failed to enforce its own -$75. Runs on the heartbeat so
         # it keeps working through EA reloads, chart changes and MT5 restarts.
         _guardian.poll()
+        # Pencatat regime. Hanya bekerja saat ada bar H1 baru, dan TIDAK PERNAH
+        # mengubah setelan atau menyentuh posisi. Dibungkus try supaya kegagalan
+        # pencatatan tidak boleh menjatuhkan penjaga basket di atasnya -- itu
+        # yang melindungi akun real, ini cuma buku catatan.
+        try:
+            _regime.poll()
+        except Exception:       # noqa: BLE001
+            logger.exception("[regime] poll gagal (diabaikan)")
         # Laju basket yang melonjak = rem lepas. Semi Marti live memakai
         # confirm=false (entry pada sinyal mentah); satu-satunya yang menahannya
         # adalah filter berita EA, yang gagal DIAM-DIAM kalau kalender MT5 tidak
@@ -137,6 +147,7 @@ def health():
         "risk": risk_snapshot(_default_symbol or "XAUUSD"),
         "semi_marti": _basket.state(),
         "guardian": _guardian.state(),   # backstop status, visible to the watchdog
+        "regime": _regime.state(),       # catatan regime pasar; tidak menggerakkan apa pun
     }
     if not mt5_probe["ok"]:
         if starting:
