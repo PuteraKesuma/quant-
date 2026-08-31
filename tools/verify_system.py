@@ -122,15 +122,49 @@ def c_config():
     return cfg
 
 
+# Preset resmi. SATU tempat -- versi sebelumnya menanam "SemiMartiV10_LIVE.set"
+# di lima baris terpisah, jadi saat preset resmi berganti ke FINAL.set alat ini
+# diam-diam terus memvalidasi file lama dan tetap melapor "cocok". Kebetulan
+# isinya identik, jadi tidak ada kerugian -- tapi itu keberuntungan, bukan
+# pemeriksaan.
+PRESET = "SemiMartiV10_FINAL.set"
+
+# Terminal tester menjalankan akun DEMO. mt5.initialize() tanpa path memilih
+# terminal sendiri, dan saat backtest berjalan dia bisa menempel ke tester --
+# 2026-08-31 alat ini melaporkan akun 106271896 / $269.92 padahal akun real
+# 28908348 / $466. Sama seperti book.py dan data.py: path dipaksa, tester ditolak.
+LIVE_TERMINAL = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
+
+def _mt5_live():
+    """Kembalikan modul mt5 yang TERIKAT ke terminal live, atau None + alasan."""
+    import MetaTrader5 as mt5
+    path = LIVE_TERMINAL
+    try:
+        import yaml
+        cfg = yaml.safe_load(open(r"C:\Quant\config.yaml", encoding="utf-8")) or {}
+        path = (cfg.get("live") or {}).get("mt5_terminal_path") or path
+    except Exception:
+        pass
+    if not mt5.initialize(path=path):
+        return None, str(mt5.last_error())
+    ti = mt5.terminal_info()
+    if ti and "mt5_tester" in ti.path.replace("/", "\\"):
+        mt5.shutdown()
+        return None, f"menempel ke terminal BACKTEST ({ti.path}) -- ditolak"
+    return mt5, None
+
+
 # ---------------------------------------------------------------- MT5
 def c_mt5():
     try:
-        import MetaTrader5 as mt5
+        import MetaTrader5 as mt5  # noqa: F401
     except ImportError:
         check("MT5 python API", FAIL, "modul tidak ada", "pip install MetaTrader5")
         return None
-    if not mt5.initialize():
-        check("MT5 terhubung", FAIL, str(mt5.last_error()),
+    mt5, err = _mt5_live()
+    if mt5 is None:
+        check("MT5 terhubung", FAIL, err,
               "Buka MetaTrader 5 dan login ke akun")
         return None
     try:
@@ -163,7 +197,7 @@ def c_files():
         return
 
     need_ea = ["SignalExecutor.ex5", "SemiMartiV10_Gated.ex5"]
-    need_set = ["SemiMartiV10_LIVE.set"]        # preset resmi sejak 2026-08-26
+    need_set = [PRESET]
     for t in terms:
         miss_ea = [f for f in need_ea if not (t / "MQL5" / "Experts" / f).exists()]
         miss_set = [f for f in need_set if not (t / "MQL5" / "Presets" / f).exists()]
@@ -180,7 +214,7 @@ def c_files():
             check(f"Preset di terminal {tag}", OK, ", ".join(need_set))
 
         # preset harus benar-benar memasang batas kerugian
-        p = t / "MQL5" / "Presets" / "SemiMartiV10_LIVE.set"
+        p = t / "MQL5" / "Presets" / PRESET
         if p.exists():
             txt = _read_any(p)
             sl = next((l.split("=", 1)[1].strip() for l in txt.splitlines()
@@ -190,7 +224,7 @@ def c_files():
                       "Preset ini TIDAK membatasi kerugian martingale")
             else:
                 check("Preset: basket SL", OK, f"InpGlobalSL_USD={sl}")
-        _c_live_inputs(t / "MQL5" / "Presets" / "SemiMartiV10_LIVE.set")
+        _c_live_inputs(t / "MQL5" / "Presets" / PRESET)
 
 
 # Nilai yang, kalau live diam-diam berbeda dari preset, mengubah hasil secara
@@ -264,10 +298,10 @@ def _c_live_inputs(preset: Path):
 
     if beda:
         check("Input EA aktif", FAIL, "; ".join(beda),
-              "EA jalan dengan setelan BUKAN dari preset. F7 -> Inputs -> Load -> "
-              "SemiMartiV10_LIVE.set -> OK")
+              f"EA jalan dengan setelan BUKAN dari preset. F7 -> Inputs -> Load -> "
+              f"{PRESET} -> OK")
     else:
-        check("Input EA aktif", OK, "cocok dengan SemiMartiV10_LIVE.set")
+        check("Input EA aktif", OK, f"cocok dengan {PRESET}")
 
 
 def _latest_input_dump() -> str | None:
@@ -421,8 +455,8 @@ def c_semimarti(pos_info):
     import datetime as dt
 
     try:
-        import MetaTrader5 as mt5
-        if not mt5.initialize():
+        mt5, _err = _mt5_live()
+        if mt5 is None:
             return
         try:
             frm = dt.datetime.now() - dt.timedelta(days=3)
