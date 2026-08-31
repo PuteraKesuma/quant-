@@ -180,9 +180,18 @@ class MonthlyGovernor:
                     f"(stop@75%=${trigger:.0f}) -> {'PAUSED (bersyukur)' if paused else 'active'}")
 
     def run(self) -> None:
-        import MetaTrader5 as mt5
-        if not mt5.initialize():
-            logger.error(f"[governor] MT5 init failed: {mt5.last_error()}"); return
+        # Lewat book._mt5(), yang MEMAKSA path terminal live dan menolak terminal
+        # backtest. initialize() polos memilih terminalnya sendiri: kalau governor
+        # kebetulan restart (watchdog) saat backtest berjalan, dia akan menegakkan
+        # batas rugi pada akun DEMO di tester dan akun real jadi TANPA penjagaan --
+        # diam-diam, karena semua lognya tetap terlihat normal. 2026-08-31
+        # verify_system tertipu persis begini: melapor akun 106271896 / $269.92
+        # padahal akun real 28908348 / $466.
+        from .book import _mt5
+        try:
+            mt5 = _mt5()
+        except Exception as e:                                   # noqa: BLE001
+            logger.error(f"[governor] MT5 init failed: {e}"); return
         logger.info(f"[governor] up. magics={sorted(self.magics)} threshold={self.threshold} poll={self.poll}s")
         try:
             while True:

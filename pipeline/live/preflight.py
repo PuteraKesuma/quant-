@@ -76,10 +76,24 @@ def main() -> int:
     # --- MT5 terminal reachable ---
     try:
         import MetaTrader5 as mt5
-        if mt5.initialize():
+        # Path DIPAKSA ke terminal live. initialize() polos memilih terminal
+        # sendiri; kalau backtest sedang jalan dia bisa menempel ke terminal
+        # tester (akun DEMO), dan preflight -- yang justru dipakai untuk
+        # menyatakan "aman sebelum live" -- akan meloloskan akun yang salah.
+        _p = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+        try:
+            from ..fetch.base_fetcher import load_config
+            _p = ((load_config().get("live") or {}).get("mt5_terminal_path") or _p)
+        except Exception:                                        # noqa: BLE001
+            pass
+        if mt5.initialize(path=_p):
             ti = mt5.terminal_info()
             acc = mt5.account_info()
             who = f"login={acc.login}" if acc else "belum login"
+            if ti and ti.path and "mt5_tester" in ti.path.replace("/", "\\"):
+                problems.append(f"MT5 menempel ke terminal BACKTEST ({ti.path}) "
+                                f"- bukan terminal live")
+                print(f"{BAD} MT5 menempel ke terminal BACKTEST: {ti.path}")
             algo = getattr(ti, "trade_allowed", None)
             print(f"{OK} MT5 terhubung ({who}, AlgoTrading={'ON' if algo else 'OFF?'})")
             if algo is False:

@@ -19,8 +19,21 @@ class MT5Fetcher(BaseFetcher):
         self.mt5_symbol = mt5_symbol
 
     def fetch(self, start: str, end: str) -> pd.DataFrame:
-        if not mt5.initialize():
+        # Path DIPAKSA: initialize() polos bisa menempel ke terminal backtest
+        # portable di mt5_tester/, yang riwayat harganya berbeda dari terminal
+        # live. Data latih/analisis lalu diam-diam berasal dari sumber lain.
+        _p = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+        try:
+            from .base_fetcher import load_config
+            _p = ((load_config().get("live") or {}).get("mt5_terminal_path") or _p)
+        except Exception:                                        # noqa: BLE001
+            pass
+        if not mt5.initialize(path=_p):
             raise RuntimeError(f"MT5 initialize() failed: {mt5.last_error()}")
+        _ti = mt5.terminal_info()
+        if _ti is not None and _ti.path and "mt5_tester" in _ti.path.replace("/", "\\"):
+            mt5.shutdown()
+            raise RuntimeError(f"MT5 attached to the BACKTEST terminal ({_ti.path}); refusing")
 
         try:
             info = mt5.symbol_info(self.mt5_symbol)
