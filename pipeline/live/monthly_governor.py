@@ -133,12 +133,41 @@ class MonthlyGovernor:
                 prev = json.loads(STATE.read_text(encoding="utf-8"))
             except Exception:
                 prev = {}
+        login = int(ai.login) if ai else 0
         daily_stop_at = -(self.daily_loss - self.daily_buffer)
         maxloss_stop_at = self.maxloss_floor + self.maxloss_buffer
         sticky_day = bool(prev.get("paused_daily")) and prev.get("day") == day
-        sticky_max = bool(prev.get("paused_maxloss"))
+
+        # Latch max-loss MILIK AKUN tempat dia dipasang. Pindah akun harus
+        # memulai bersih -- kalau tidak, larangan dari akun lama ikut terbawa
+        # dan diam-diam memblokir akun baru yang sehat.
+        prev_login = int(prev.get("login") or 0)
+        akun_baru = prev_login != 0 and login != 0 and prev_login != login
+        if akun_baru:
+            logger.warning(f"[governor] AKUN BERGANTI {prev_login} -> {login}. "
+                           f"Latch max-loss lama dibuang; mulai bersih.")
+        sticky_max = bool(prev.get("paused_maxloss")) and not akun_baru
+
         paused_daily = sticky_day or (today <= daily_stop_at)
-        maxloss_trip = equity > 0 and self.maxloss_floor > 0 and equity <= maxloss_stop_at
+
+        # Butuh TIGA bacaan berturut-turut di bawah lantai sebelum melatch, dan
+        # hitungannya direset kalau akun berganti. Satu bacaan sesaat sudah
+        # cukup untuk melatch di versi sebelumnya: saat pemilik berpindah akun
+        # 2026-09-01, MT5 sempat melaporkan equity di bawah $330 selagi
+        # berpindah, governor melatch "maxloss" selamanya (tidak ada reset
+        # harian untuk latch ini), dan akun baru yang sehat -- equity $489,79,
+        # jauh di atas lantai -- diblokir tanpa satu pun kerugian nyata.
+        # _flatten() juga ikut terpanggil di trip pertama; kebetulan tidak ada
+        # posisi terbuka saat itu, tapi lain kali bisa ada.
+        breach = equity > 0 and self.maxloss_floor > 0 and equity <= maxloss_stop_at
+        streak = int(prev.get("maxloss_breaches") or 0)
+        streak = 0 if akun_baru else (streak + 1 if breach else 0)
+        maxloss_trip = breach and streak >= 3
+        if breach and not maxloss_trip:
+            logger.warning(f"[governor] equity ${equity:.2f} <= lantai "
+                           f"${maxloss_stop_at:.0f} ({streak}/3 bacaan). Belum "
+                           f"dilatch -- menunggu konfirmasi.")
+
         paused_maxloss = sticky_max or maxloss_trip
         if maxloss_trip and not sticky_max:
             self._flatten(mt5)                              # protect the account
@@ -146,8 +175,10 @@ class MonthlyGovernor:
         reason = "maxloss" if paused_maxloss else ("daily" if paused_daily else "")
         state = {"mode": "rules", "day": day, "paused": bool(paused), "reason": reason,
                  "today_realized": round(today, 2), "equity": round(equity, 2),
+                 "login": login,
                  "daily_stop_at": round(daily_stop_at, 2), "maxloss_stop_at": round(maxloss_stop_at, 2),
                  "paused_daily": bool(paused_daily), "paused_maxloss": bool(paused_maxloss),
+                 "maxloss_breaches": streak,
                  "max_risk_per_trade": self.max_risk, "magics": sorted(self.magics),
                  "updated": now.isoformat()}
         STATE.write_text(json.dumps(state, indent=2), encoding="utf-8")
