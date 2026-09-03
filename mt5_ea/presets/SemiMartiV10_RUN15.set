@@ -1,0 +1,150 @@
+; SemiMartiV10_RUN15.set
+; Dibuat 2026-09-03 atas permintaan pemilik akun.
+;
+; BEDANYA DARI FINAL.set -- tepat tiga input, semuanya sisi KELUAR:
+;   InpFirstEntry_TP_USD  10.0 -> 15.0
+;   InpTrailingStartUSD   10.0 -> 15.0
+;   InpTrailingStepUSD     2.0 -> 3.0
+; Ketiganya WAJIB berubah bersama. Trailing global mengunci sebelum TP kaki #1
+; tercapai, jadi menaikkan salah satunya saja tidak mengubah apa pun.
+;
+; DASARNYA, tick asli, XAUUSD M5, deposit $1.000, lot 0.01. Jumlah tick tiap
+; pasangan DIVERIFIKASI identik, jadi selisihnya sah dibandingkan:
+;
+;   tahun   patokan                       RUN15                        selisih
+;   2023    -468.67  PF 0.75  DD 618.14   -401.36  PF 0.80  DD 505.25   +67.31
+;   2025    +515.24  PF 1.32  DD 213.75   +642.48  PF 1.31  DD 263.58  +127.24
+;   2026    +674.50  PF 1.61  DD 200.55   +981.79  PF 1.69  DD 254.92  +307.29
+;   ------------------------------------------------------------------------
+;   total   +721.07                       +1222.91                    +501.84
+;
+; Unggul di KETIGA tahun, termasuk 2023 yang merupakan tahun terburuk -- dan di
+; 2023 drawdown-nya justru $112,89 LEBIH KECIL. Validasi selesai 2026-09-03;
+; 2025 sempat jadi keraguan utama karena tahun itulah yang dulu membalikkan
+; kesimpulan riset regime gate, tapi di sini dia mengonfirmasi.
+;
+; Profil risiko per basket TIDAK berubah dari FINAL.set, diperiksa per tahun:
+;   rugi terburuk  2023 -77.62 | 2025 -78.35 | 2026 -81.42  (penjaga -$110)
+;   kaki maksimal  3 di semua tahun (martingale tidak melapis lebih dalam)
+;   SL basket tetap $75, TP basket tetap $40, lot tetap 0.01
+;
+; UKURAN AKUN
+; Drawdown RUN15 di 2023 adalah $505,25. Ruang di akun 28910085 hanya $159,79
+; (saldo ~$490 dikurangi lantai governor $330). Tahun seperti 2023 akan
+; menghentikan akun ini jauh sebelum drawdown itu tercapai -- berlaku untuk
+; FINAL.set juga (DD $618,14), jadi ini soal modal, bukan soal preset.
+;
+; KEMBALI KE SEMULA: F7 -> Inputs -> Load -> SemiMartiV10_FINAL.set -> OK
+
+InpRSIPeriod=250
+InpMAPeriod=1
+
+InpRSILevelHigh=80.0
+
+InpRSILevelMid=50.0
+
+InpRSILevelLow=20.0
+
+InpMACDFast=5
+
+InpMACDSlow=13
+
+InpMACDSignal=9
+
+InpMACDNormalizePeriod=100
+
+InpMASource=0
+
+InpMASmaPeriod=21
+
+InpUseMartingale=true
+
+InpStartLot=0.01
+
+InpLotMultiplier=1.5
+
+InpMaxLayers=3
+
+InpOrderGapPips=25.0
+
+InpLayerStartBEP=3
+
+InpLayerBEPOffsetPips=1.0
+
+InpLayerOncePerSeries=true
+
+InpGlobalTP_USD=40
+
+InpGlobalSL_USD=75
+
+InpDailyTargetUSD=50.0
+
+InpUseTrailingUSD=true
+
+InpTrailingStartUSD=15.0
+
+InpTrailingStepUSD=3.0
+
+InpFirstEntry_TP_USD=15.0
+
+InpFirstEntry_Trail_USD=25.0
+
+InpLayer1DepthMult=1.5
+
+InpLayer2DepthMult=2.5
+
+InpLayer3DepthMult=4.0
+
+InpLimitExpiryMins=240
+
+InpStartHour=9
+
+InpEndHour=23
+
+InpUseNewsFilter=true
+
+InpNewsMinutesBefore=60
+
+InpNewsMinutesAfter=30
+
+InpNewsImpactLevel=2
+
+InpNewsCountry=USD
+
+InpRequireBreakConfirm=true
+
+InpConfirmMaxTicks=0
+
+InpShowIndicators=true
+
+InpDrawBars=50
+
+InpColorRSI=16748574
+
+InpColorSMA=42495
+
+InpColorMACDNorm=8721863
+
+InpEAName=VYG - MRM
+
+InpOrderComment=WA HANYA INI 081227853434
+
+InpMagicNumber=20250822
+
+InpDebug=false
+
+InpSignalMode=2
+
+InpUseRegimeGate=false
+
+InpGateTF=16385
+
+InpGateATRPeriod=16
+
+InpGateMultEntry=1.8
+
+InpGateMultTrend=3.8
+
+InpGateBars=400
+
+
