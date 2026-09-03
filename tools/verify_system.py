@@ -127,7 +127,7 @@ def c_config():
 # diam-diam terus memvalidasi file lama dan tetap melapor "cocok". Kebetulan
 # isinya identik, jadi tidak ada kerugian -- tapi itu keberuntungan, bukan
 # pemeriksaan.
-PRESET = "SemiMartiV10_FINAL.set"
+PRESET = "SemiMartiV10_RUN15.set"     # dipasang pemilik 2026-09-03 09:01
 
 # Terminal tester menjalankan akun DEMO. mt5.initialize() tanpa path memilih
 # terminal sendiri, dan saat backtest berjalan dia bisa menempel ke tester --
@@ -280,13 +280,22 @@ def _c_live_inputs(preset: Path):
         return
 
     beda = []
+    dibanding = 0          # berapa input yang BENAR-BENAR dicocokkan
+    lewat = []
     for key in _CRITICAL:
         pat = _LOG_MAP.get(key)
         if not pat or key not in want:
+            lewat.append(key)
             continue
         m = re.search(pat[0], blob, re.S)
         if not m:
+            # Pola tidak ketemu di log. Ini BUKAN alasan meloloskan -- kalau
+            # format DumpInputs berubah, semua pola gagal cocok dan pemeriksaan
+            # ini akan melapor "cocok" tanpa membandingkan apa pun. Dicatat, dan
+            # dihitung di bawah.
+            lewat.append(key)
             continue
+        dibanding += 1
         got_raw = m.group(1)
         exp_raw = want[key]
         if pat[1] is float:
@@ -300,8 +309,19 @@ def _c_live_inputs(preset: Path):
         check("Input EA aktif", FAIL, "; ".join(beda),
               f"EA jalan dengan setelan BUKAN dari preset. F7 -> Inputs -> Load -> "
               f"{PRESET} -> OK")
+    elif dibanding == 0:
+        check("Input EA aktif", FAIL,
+              "TIDAK SATU PUN input bisa dicocokkan dari log",
+              "Format DumpInputs kemungkinan berubah sehingga _LOG_MAP tidak "
+              "cocok lagi. Jangan anggap ini aman -- perbaiki polanya dulu.")
+    elif dibanding < len(_CRITICAL) // 2:
+        check("Input EA aktif", WARN,
+              f"hanya {dibanding}/{len(_CRITICAL)} input tercocokkan "
+              f"({', '.join(lewat[:4])}{'...' if len(lewat) > 4 else ''})",
+              "Sebagian pola _LOG_MAP tidak cocok dengan log; periksa DumpInputs")
     else:
-        check("Input EA aktif", OK, f"cocok dengan {PRESET}")
+        check("Input EA aktif", OK,
+              f"{dibanding}/{len(_CRITICAL)} input cocok dengan {PRESET}")
 
 
 def _latest_input_dump() -> str | None:
